@@ -26,7 +26,83 @@ on:
         type: string
   workflow_dispatch:
 jobs:
+  verify-credentials:
+    name: Verify Docker Credentials
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate secrets presence
+        env:
+          DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          MISSING=""
+          [ -z "$DOCKER_ORG" ] && MISSING="${MISSING} DOCKER_ORG"
+          [ -z "$DOCKER_USERNAME" ] && MISSING="${MISSING} DOCKER_USERNAME"
+          [ -z "$DOCKERHUB_TOKEN" ] && MISSING="${MISSING} DOCKERHUB_TOKEN"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required Docker repository secrets:${MISSING}"
+            exit 1
+          fi
+          echo "All required Docker secrets are present."
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Verify registry push authorization
+        env:
+          DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+        run: |
+          check_push_access() {
+            local repo="$1"
+            echo "Checking push permissions for repository: ${repo}..."
+            local token_resp
+            token_resp=$(curl -s -u "${DOCKER_USERNAME}:${DOCKERHUB_TOKEN}" \
+              "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:push,pull")
+            local token
+            token=$(echo "$token_resp" | jq -r '.token // .access_token // empty')
+            if [ -z "$token" ]; then
+              echo "::error::Failed to obtain Docker auth token for ${repo}: ${token_resp}"
+              return 1
+            fi
+            local upload_resp http_code
+            upload_resp=$(curl -s -i -X POST "https://registry-1.docker.io/v2/${repo}/blobs/uploads/" \
+              -H "Authorization: Bearer ${token}")
+            http_code=$(echo "$upload_resp" | grep -i "^HTTP/" | tail -n1 | awk '{print $2}')
+            if [ "$http_code" -eq 202 ]; then
+              echo "Push access successfully verified for ${repo} (HTTP 202 Accepted)."
+              local upload_url
+              upload_url=$(echo "$upload_resp" | grep -i "^location:" | awk '{print $2}' | tr -d '\r')
+              if [ -n "$upload_url" ]; then
+                case "$upload_url" in
+                  http*)
+                    del_url="$upload_url"
+                    ;;
+                  *)
+                    del_url="https://registry-1.docker.io${upload_url}"
+                    ;;
+                esac
+                curl -s -X DELETE "$del_url" \
+                  -H "Authorization: Bearer ${token}" >/dev/null 2>&1 || true
+              fi
+              return 0
+            else
+              echo "::error::Registry push check failed for ${repo} (HTTP ${http_code}):"
+              echo "$upload_resp"
+              return 1
+            fi
+          }
+          echo "Verifying push access for release repositories..."
+          check_push_access "${DOCKER_ORG}/${IMAGE_NAME}"
+          check_push_access "${DOCKER_ORG}/${IMAGE_NAME}-dev"
   build-test:
+    name: Build and Test Image
+    needs:
+      - verify-credentials
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
