@@ -47,7 +47,20 @@ jobs:
             echo "::error::Missing required Semantic Release repository secrets:${MISSING}"
             exit 1
           fi
-          echo "All required Semantic Release secrets are present."
+          python3 -c "
+          import os, sys
+          key = os.environ.get('SEMVER_APP_PRIVATE_KEY', '').strip()
+          if key.endswith('.pem') or key.startswith('/') or key.startswith('~'):
+              print('::error::SEMVER_APP_PRIVATE_KEY is a file path. Paste file contents instead.')
+              sys.exit(1)
+          if '-----BEGIN' not in key or '-----END' not in key:
+              print('::error::SEMVER_APP_PRIVATE_KEY missing BEGIN/END RSA PRIVATE KEY markers.')
+              sys.exit(1)
+          if (key.startswith('\"') and key.endswith('\"')) or (key.startswith(\"'\") and key.endswith(\"'\")):
+              print('::error::SEMVER_APP_PRIVATE_KEY wrapped in quotes. Remove quotes in Secrets.')
+              sys.exit(1)
+          "
+          echo "All required Semantic Release secrets are present and formatted."
       - name: Generate GitHub App Token
         id: app-token
         uses: actions/create-github-app-token@v3
