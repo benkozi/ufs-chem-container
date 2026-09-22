@@ -56,7 +56,8 @@ The GitHub Actions workflows require the following repository-level secrets when
   - `DOCKER_ORG`: Docker Hub organization / namespace.
   - `DOCKER_USERNAME`: Docker Hub account username.
   - `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions.
-  - `SEMVER_APP_ID` & `SEMVER_APP_PRIVATE_KEY`: (Optional) GitHub App credentials for automated releases and bypass permissions; defaults to `GITHUB_TOKEN` if omitted.
+  - `SEMVER_APP_ID`: GitHub App Client ID (or App ID) for automated semantic release.
+  - `SEMVER_APP_PRIVATE_KEY`: GitHub App private key (`.pem`) for automated semantic release and branch protection bypass.
 
 ## Development & Pre-Commit
 

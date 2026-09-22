@@ -31,7 +31,82 @@ on:
         description: The Git tag of the release
         value: ${{ jobs.release.outputs.tag }}
 jobs:
+  verify-credentials:
+    name: Verify Semantic Release Credentials
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate secrets presence
+        env:
+          SEMVER_APP_ID: ${{ secrets.SEMVER_APP_ID }}
+          SEMVER_APP_PRIVATE_KEY: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+        run: |
+          MISSING=""
+          [ -z "$SEMVER_APP_ID" ] && MISSING="${MISSING} SEMVER_APP_ID"
+          [ -z "$SEMVER_APP_PRIVATE_KEY" ] && MISSING="${MISSING} SEMVER_APP_PRIVATE_KEY"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required Semantic Release repository secrets:${MISSING}"
+            exit 1
+          fi
+          echo "All required Semantic Release secrets are present."
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.SEMVER_APP_ID }}
+          private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+      - name: Verify repository write and ref permissions
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TARGET_BRANCH: ${{ inputs.target_branch || github.base_ref || github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          echo "Verifying GitHub App permissions for ${REPO}..."
+          PERMS=$(gh api "repos/${REPO}" --jq '.permissions')
+          CAN_PUSH=$(echo "$PERMS" | jq -r '.push // false')
+          if [ "$CAN_PUSH" != "true" ]; then
+            echo "::error::GitHub App does not have push permissions for ${REPO}. Granted: ${PERMS}"
+            exit 1
+          fi
+          echo "Repository push permission confirmed."
+          TEST_REF="tags/ci-perm-check-${RUN_ID}"
+          SHA="${{ github.sha }}"
+          echo "Testing Git ref creation (${TEST_REF})..."
+          if ! gh api -X POST "repos/${REPO}/git/refs" -f ref="refs/${TEST_REF}" -f sha="${SHA}" >/dev/null 2>&1; then
+            echo "::error::Failed to create test Git ref on ${REPO}. Verify App has 'Contents: Read and write'."
+            exit 1
+          fi
+          echo "Git ref creation succeeded. Cleaning up test ref..."
+          gh api -X DELETE "repos/${REPO}/git/refs/${TEST_REF}" >/dev/null 2>&1 || true
+          echo "Checking branch ruleset bypass configuration for target: ${TARGET_BRANCH}..."
+          APP_ID=$(gh api "/app" --jq '.id' 2>/dev/null || echo "${{ secrets.SEMVER_APP_ID }}")
+          RULESETS=$(gh api "repos/${REPO}/rulesets" --jq '.[].id' 2>/dev/null || true)
+          for RS_ID in $RULESETS; do
+            RS_DETAIL=$(gh api "repos/${REPO}/rulesets/${RS_ID}")
+            HAS_PR=$(echo "$RS_DETAIL" | jq '[.rules[] | select(.type=="pull_request")] | length > 0')
+            if [ "$HAS_PR" = "true" ]; then
+              RS_NAME=$(echo "$RS_DETAIL" | jq -r '.name')
+              IS_BYPASSED=false
+              BYPASS_IDS=$(echo "$RS_DETAIL" | \
+                jq -r '.bypass_actors[]? | select(.actor_type=="Integration") | .actor_id')
+              for ACTOR_ID in $BYPASS_IDS; do
+                if [ "$ACTOR_ID" = "$APP_ID" ]; then
+                  IS_BYPASSED=true
+                  break
+                fi
+              done
+              if [ "$IS_BYPASSED" = "true" ]; then
+                echo "Ruleset '${RS_NAME}' (ID: ${RS_ID}) includes GitHub App in bypass list."
+              else
+                echo "::warning::Ruleset '${RS_NAME}' requires PRs; App (ID: ${APP_ID}) not in bypass list."
+              fi
+            fi
+          done
+          echo "Semantic release credential verification completed successfully."
   release:
+    name: Semantic Release
+    needs:
+      - verify-credentials
     runs-on: ubuntu-latest
     outputs:
       new_release_version: ${{ steps.release.outputs.version }}
@@ -41,9 +116,6 @@ jobs:
     steps:
       - name: Generate GitHub App Token
         id: app-token
-        if: ${{ env.HAS_APP_ID == 'true' }}
-        env:
-          HAS_APP_ID: ${{ secrets.SEMVER_APP_ID != '' }}
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ secrets.SEMVER_APP_ID }}
@@ -52,7 +124,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           persist-credentials: true
       - name: Prepare branch for release evaluation
         if: inputs.dry_run || github.event_name == 'pull_request'
@@ -72,7 +144,7 @@ jobs:
         uses: python-semantic-release/python-semantic-release@v10
         id: release
         with:
-          github_token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           no_operation_mode: ${{ inputs.dry_run || github.event_name == 'pull_request' }}
       - name: Evaluate Release Information
         id: eval
