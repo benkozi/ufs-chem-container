@@ -1,40 +1,38 @@
 name: Build, tag, and push release image
-
 on:
   workflow_call:
     inputs:
       release_version:
-        description: 'Release version string'
+        description: Release version string
         required: true
         type: string
       is_prerelease:
-        description: 'Whether this release is a prerelease candidate'
+        description: Whether this release is a prerelease candidate
         required: true
         type: string
       target_name:
-        description: 'Target cache scope identifier'
+        description: Target cache scope identifier
         required: true
         type: string
       dockerfile:
-        description: 'Path to Dockerfile'
+        description: Path to Dockerfile
         required: true
         type: string
       context:
-        description: 'Build context'
+        description: Build context
         required: false
         type: string
-        default: '.'
+        default: .
       build_args:
-        description: 'Build args'
+        description: Build args
         required: false
         type: string
         default: ''
       image_name:
-        description: 'Image name'
+        description: Image name
         required: true
         type: string
   workflow_dispatch:
-
 jobs:
   push-release:
     runs-on: ubuntu-latest
@@ -43,16 +41,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Compute tags
         id: tags
         run: |
@@ -60,18 +55,15 @@ jobs:
           IMAGE="${{ inputs.image_name }}"
           VERSION="${{ inputs.release_version }}"
           IS_PRERELEASE="${{ inputs.is_prerelease }}"
-
           TAGS="${ORG}/${IMAGE}:${VERSION}"
           if [ "$IS_PRERELEASE" != "true" ]; then
             TAGS="${TAGS}"$'\n'"${ORG}/${IMAGE}:latest"
           fi
-
           {
             echo "tags<<EOF"
             echo "$TAGS"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-
       - name: Push release image
         uses: docker/build-push-action@v6
         with:
@@ -83,5 +75,5 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
-          cache-to: |
+          cache-to: |-
             type=inline

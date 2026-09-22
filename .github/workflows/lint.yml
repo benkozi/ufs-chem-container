@@ -1,15 +1,13 @@
 name: Lint
-
 on:
   workflow_call:
     inputs:
       pr_title:
-        description: 'Pull Request title for conventional commits validation'
+        description: Pull Request title for conventional commits validation
         required: false
         type: string
         default: ''
   workflow_dispatch:
-
 jobs:
   lint:
     name: pre-commit
@@ -17,23 +15,19 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
-
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-
       - name: Install dependencies
         run: uv sync --all-groups
-
       - name: Run pre-commit on all files
         run: uv run pre-commit run --all-files
-
       - name: Validate PR title follows Conventional Commits
         if: inputs.pr_title != ''
         env:
           PR_TITLE: ${{ inputs.pr_title }}
-        run: |
+        run: |-
           printf "%s\n" "$PR_TITLE" > /tmp/pr-title.txt
           uv run pre-commit run conventional-pre-commit \
             --hook-stage commit-msg \

@@ -1,25 +1,22 @@
 name: Pull Request CI
-
 on:
   pull_request:
     branches:
       - main
       - develop
-
 concurrency:
   group: pr-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   lint:
     name: Lint & Title Check
     uses: ./.github/workflows/lint.yml
     with:
       pr_title: ${{ github.event.pull_request.title }}
-
   build-test:
     name: Container Build Verification
-    needs: [lint]
+    needs:
+      - lint
     strategy:
       fail-fast: false
       matrix:
