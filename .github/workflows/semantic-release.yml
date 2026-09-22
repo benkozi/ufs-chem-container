@@ -100,17 +100,18 @@ jobs:
             HAS_PR=$(echo "$RS_DETAIL" | jq '[.rules[] | select(.type=="pull_request")] | length > 0')
             if [ "$HAS_PR" = "true" ]; then
               RS_NAME=$(echo "$RS_DETAIL" | jq -r '.name')
+              CAN_BYPASS=$(echo "$RS_DETAIL" | jq -r '.current_user_can_bypass // "never"')
               IS_BYPASSED=false
-              BYPASS_IDS=$(echo "$RS_DETAIL" | \
-                jq -r '.bypass_actors[]? | select(.actor_type=="Integration") | .actor_id')
-              for ACTOR_ID in $BYPASS_IDS; do
-                if [ "$ACTOR_ID" = "$APP_ID" ] || [[ "$APP_ID" == Iv* && -n "$ACTOR_ID" ]]; then
-                  IS_BYPASSED=true
-                  break
-                fi
-              done
+              if [ "$CAN_BYPASS" = "always" ]; then
+                IS_BYPASSED=true
+              fi
+              BYPASS_INTEGRATIONS=$(echo "$RS_DETAIL" | \
+                jq -r '.bypass_actors[]? | select(.actor_type=="Integration" and .bypass_mode=="always") | .actor_id')
+              if [ -n "$BYPASS_INTEGRATIONS" ]; then
+                IS_BYPASSED=true
+              fi
               if [ "$IS_BYPASSED" = "true" ]; then
-                echo "Ruleset '${RS_NAME}' (ID: ${RS_ID}) includes GitHub App in bypass list."
+                echo "Ruleset '${RS_NAME}' (ID: ${RS_ID}) includes GitHub App (${APP_SLUG}) in bypass list."
               else
                 echo "::warning::Ruleset '${RS_NAME}' requires PRs; App (${APP_SLUG:-ID $APP_ID}) not in bypass list."
               fi
