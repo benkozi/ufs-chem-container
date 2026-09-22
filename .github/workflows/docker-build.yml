@@ -52,7 +52,7 @@ jobs:
           build-args: ${{ inputs.build_args }}
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
-            type=registry,ref=${{ vars.DOCKER_ORG || 'deckyfre' }}/${{ inputs.image_name }}:latest
+            type=registry,ref=${{ vars.DOCKER_ORG || 'bkrlps' }}/${{ inputs.image_name }}:latest
           cache-to: |-
             type=gha,scope=${{ inputs.target_name }},mode=max
             type=inline

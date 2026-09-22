@@ -86,7 +86,7 @@ jobs:
           TAG="${{ steps.release.outputs.tag }}"
           RELEASED="${{ steps.release.outputs.released }}"
           IS_PRERELEASE="${{ steps.eval.outputs.is_prerelease }}"
-          ORG="${{ vars.DOCKER_ORG || 'deckyfre' }}"
+          ORG="${{ vars.DOCKER_ORG || 'bkrlps' }}"
           {
             echo "### 🚀 Semantic Release Plan"
             if [ "${{ inputs.dry_run || github.event_name == 'pull_request' }}" = "true" ]; then
@@ -132,7 +132,7 @@ jobs:
             const tag = "${{ steps.release.outputs.tag }}";
             const released = "${{ steps.release.outputs.released }}";
             const isPrerelease = "${{ steps.eval.outputs.is_prerelease }}";
-            const org = "${{ vars.DOCKER_ORG || 'deckyfre' }}";
+            const org = "${{ vars.DOCKER_ORG || 'bkrlps' }}";
             const marker = "<!-- semantic-release-preview-comment -->";
             let body = `${marker}\n### 🚀 Semantic Release Preview\n\n`;
             body += `This PR will be evaluated against **\`${target}\`** when merged.\n\n`;

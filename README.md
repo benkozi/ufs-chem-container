@@ -18,7 +18,7 @@ The container images built by this repository provide an exact, 100% drop-in rep
 
 ## Image Variants & Naming Conventions
 
-Images are hosted on Docker Hub. The default organization namespace is `deckyfre` (configurable via repository variable `DOCKER_ORG`):
+Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev](https://hub.docker.com/repository/docker/bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev/general). The default organization namespace is `bkrlps` (configurable via repository variable `DOCKER_ORG`):
 
 | Branch | Image Name | Tags | Purpose |
 |---|---|---|---|
@@ -53,7 +53,7 @@ spack find
 The GitHub Actions workflows require the following repository configuration when publishing images:
 
 - **Repository Variables**:
-  - `DOCKER_ORG`: Docker Hub organization / user namespace (defaults to `deckyfre` if unset).
+  - `DOCKER_ORG`: Docker Hub organization / user namespace (defaults to `bkrlps` if unset).
 - **Repository Secrets**:
   - `DOCKER_USERNAME`: Docker Hub account username.
   - `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions.
