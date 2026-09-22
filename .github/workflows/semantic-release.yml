@@ -28,10 +28,6 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: write
-      pull-requests: write
     outputs:
       new_release_version: ${{ steps.release.outputs.version }}
       new_release_published: ${{ steps.release.outputs.released }}

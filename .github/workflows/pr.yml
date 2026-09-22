@@ -7,6 +7,10 @@ on:
 concurrency:
   group: pr-${{ github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
 jobs:
   lint:
     name: Lint & Title Check
