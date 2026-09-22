@@ -11,6 +11,9 @@ jobs:
   release:
     name: Semantic Release
     uses: ./.github/workflows/semantic-release.yml
+    with:
+      dry_run: false
+      target_branch: ${{ github.ref_name }}
     secrets: inherit
   publish-images:
     name: Publish Container Images

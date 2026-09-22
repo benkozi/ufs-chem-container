@@ -13,6 +13,13 @@ jobs:
     uses: ./.github/workflows/lint.yml
     with:
       pr_title: ${{ github.event.pull_request.title }}
+  release-preview:
+    name: Semantic Release Preview
+    uses: ./.github/workflows/semantic-release.yml
+    with:
+      dry_run: true
+      target_branch: ${{ github.base_ref }}
+    secrets: inherit
   build-test:
     name: Container Build Verification
     needs:
