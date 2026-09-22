@@ -1,0 +1,34 @@
+name: Pull Request CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Title Check
+    uses: ./.github/workflows/lint.yml
+    with:
+      pr_title: ${{ github.event.pull_request.title }}
+
+  build-test:
+    name: Container Build Verification
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_name: spack-base
+            dockerfile: ./docker/Dockerfile-Spack-Base
+            image_name: ufschem-spack-base-ubuntu-gcc-13
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      target_name: ${{ matrix.target_name }}
+      dockerfile: ${{ matrix.dockerfile }}
+      image_name: ${{ matrix.image_name }}

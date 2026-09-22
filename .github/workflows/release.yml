@@ -1,0 +1,38 @@
+name: Release & Container Publish
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Semantic Release
+    uses: ./.github/workflows/semantic-release.yml
+    secrets: inherit
+
+  publish-images:
+    name: Publish Container Images
+    needs: [release]
+    if: needs.release.outputs.new_release_published == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_name: spack-base
+            dockerfile: ./docker/Dockerfile-Spack-Base
+            image_name_prod: ufschem-spack-base-ubuntu-gcc-13
+            image_name_dev: ufschem-spack-base-ubuntu-gcc-13-dev
+    uses: ./.github/workflows/docker-release.yml
+    with:
+      release_version: ${{ needs.release.outputs.new_release_version }}
+      is_prerelease: ${{ needs.release.outputs.is_prerelease }}
+      target_name: ${{ matrix.target_name }}
+      dockerfile: ${{ matrix.dockerfile }}
+      image_name: ${{ needs.release.outputs.is_prerelease == 'true' && matrix.image_name_dev || matrix.image_name_prod }}
+    secrets: inherit
