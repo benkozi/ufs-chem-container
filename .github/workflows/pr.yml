@@ -36,3 +36,4 @@ jobs:
       target_name: ${{ matrix.target_name }}
       dockerfile: ${{ matrix.dockerfile }}
       image_name: ${{ matrix.image_name }}
+    secrets: inherit

@@ -18,7 +18,7 @@ The container images built by this repository provide an exact, 100% drop-in rep
 
 ## Image Variants & Naming Conventions
 
-Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev](https://hub.docker.com/repository/docker/bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev/general). The default organization namespace is `bkrlps` (configurable via repository variable `DOCKER_ORG`):
+Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev](https://hub.docker.com/repository/docker/bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev/general). The organization namespace is configured via repository secret `DOCKER_ORG`:
 
 | Branch | Image Name | Tags | Purpose |
 |---|---|---|---|
@@ -50,11 +50,10 @@ spack find
 
 ## Repository Configuration & Secrets
 
-The GitHub Actions workflows require the following repository configuration when publishing images:
+The GitHub Actions workflows require the following repository-level secrets when publishing images (all Docker configuration is managed via repository secrets with no defaults):
 
-- **Repository Variables**:
-  - `DOCKER_ORG`: Docker Hub organization / user namespace (defaults to `bkrlps` if unset).
 - **Repository Secrets**:
+  - `DOCKER_ORG`: Docker Hub organization / namespace.
   - `DOCKER_USERNAME`: Docker Hub account username.
   - `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions.
   - `SEMVER_APP_ID` & `SEMVER_APP_PRIVATE_KEY`: (Optional) GitHub App credentials for automated releases and bypass permissions; defaults to `GITHUB_TOKEN` if omitted.

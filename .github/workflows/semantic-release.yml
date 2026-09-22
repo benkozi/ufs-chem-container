@@ -86,7 +86,7 @@ jobs:
           TAG="${{ steps.release.outputs.tag }}"
           RELEASED="${{ steps.release.outputs.released }}"
           IS_PRERELEASE="${{ steps.eval.outputs.is_prerelease }}"
-          ORG="${{ vars.DOCKER_ORG || 'bkrlps' }}"
+          ORG="${{ secrets.DOCKER_ORG }}"
           {
             echo "### 🚀 Semantic Release Plan"
             if [ "${{ inputs.dry_run || github.event_name == 'pull_request' }}" = "true" ]; then
@@ -108,10 +108,10 @@ jobs:
               echo "- Git tag \`$TAG\` will be created."
               echo "- Release notes and \`CHANGELOG.md\` will be published."
               if [ "$IS_PRERELEASE" = "true" ]; then
-                echo "- Container \`$ORG/ufschem-spack-base-ubuntu-gcc-13-dev:$VERSION\` will be built/pushed."
+                echo "- Container \`${ORG:+$ORG/}ufschem-spack-base-ubuntu-gcc-13-dev:$VERSION\` will be built/pushed."
                 echo "- Docker tag \`:latest\` will **not** be updated (develop prerelease candidate)."
               else
-                echo "- Container \`$ORG/ufschem-spack-base-ubuntu-gcc-13:$VERSION\` will be built/pushed."
+                echo "- Container \`${ORG:+$ORG/}ufschem-spack-base-ubuntu-gcc-13:$VERSION\` will be built/pushed."
                 echo "- Docker tag \`:latest\` will be updated to \`$VERSION\`."
               fi
             else
@@ -132,7 +132,8 @@ jobs:
             const tag = "${{ steps.release.outputs.tag }}";
             const released = "${{ steps.release.outputs.released }}";
             const isPrerelease = "${{ steps.eval.outputs.is_prerelease }}";
-            const org = "${{ vars.DOCKER_ORG || 'bkrlps' }}";
+            const org = "${{ secrets.DOCKER_ORG }}";
+            const orgPrefix = org ? `${org}/` : "";
             const marker = "<!-- semantic-release-preview-comment -->";
             let body = `${marker}\n### 🚀 Semantic Release Preview\n\n`;
             body += `This PR will be evaluated against **\`${target}\`** when merged.\n\n`;
@@ -148,10 +149,10 @@ jobs:
               body += `- Create Git tag \`${tag}\`\n`;
               body += `- Publish GitHub Release and update \`CHANGELOG.md\`\n`;
               if (isPrerelease === 'true') {
-                body += `- Build & push: \`${org}/ufschem-spack-base-ubuntu-gcc-13-dev:${version}\`\n`;
+                body += `- Build & push: \`${orgPrefix}ufschem-spack-base-ubuntu-gcc-13-dev:${version}\`\n`;
                 body += `- Docker tag \`:latest\` will **not** be moved (develop candidate)\n`;
               } else {
-                body += `- Build & push: \`${org}/ufschem-spack-base-ubuntu-gcc-13:${version}\`\n`;
+                body += `- Build & push: \`${orgPrefix}ufschem-spack-base-ubuntu-gcc-13:${version}\`\n`;
                 body += `- Docker tag \`:latest\` will be updated to \`${version}\`\n`;
               }
             } else {
