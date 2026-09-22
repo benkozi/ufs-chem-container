@@ -27,7 +27,7 @@ jobs:
       matrix:
         include:
           - target_name: spack-base
-            dockerfile: ./docker/Dockerfile-Spack-Base
+            dockerfile: ./docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13
             image_name_prod: ufschem-spack-base-ubuntu-gcc-13
             image_name_dev: ufschem-spack-base-ubuntu-gcc-13-dev
     uses: ./.github/workflows/docker-release.yml

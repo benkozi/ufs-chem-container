@@ -32,7 +32,7 @@ Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev]
 To build the Spack base container image locally using Docker Buildx:
 
 ```bash
-docker buildx build -f docker/Dockerfile-Spack-Base -t ufschem-spack-base:local .
+docker buildx build -f docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13 -t ufschem-spack-base:local .
 ```
 
 To run the container interactively and verify the Spack environment:
