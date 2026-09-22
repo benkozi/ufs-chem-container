@@ -75,13 +75,13 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           echo "Verifying GitHub App permissions for ${REPO}..."
-          PERMS=$(gh api "repos/${REPO}" --jq '.permissions')
-          CAN_PUSH=$(echo "$PERMS" | jq -r '.push // false')
-          if [ "$CAN_PUSH" != "true" ]; then
-            echo "::error::GitHub App does not have push permissions for ${REPO}. Granted: ${PERMS}"
+          ACCESSIBLE=$(gh api "/installation/repositories" \
+            --jq '[.repositories[].full_name] | contains(["'${REPO}'"])')
+          if [ "$ACCESSIBLE" != "true" ]; then
+            echo "::error::GitHub App is not installed on repository ${REPO}."
             exit 1
           fi
-          echo "Repository push permission confirmed."
+          echo "GitHub App repository access confirmed."
           TEST_REF="tags/ci-perm-check-${RUN_ID}"
           SHA="${{ github.sha }}"
           echo "Testing Git ref creation (${TEST_REF})..."
