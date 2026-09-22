@@ -92,7 +92,8 @@ jobs:
           echo "Git ref creation succeeded. Cleaning up test ref..."
           gh api -X DELETE "repos/${REPO}/git/refs/${TEST_REF}" >/dev/null 2>&1 || true
           echo "Checking branch ruleset bypass configuration for target: ${TARGET_BRANCH}..."
-          APP_ID=$(gh api "/app" --jq '.id' 2>/dev/null || echo "${{ secrets.SEMVER_APP_ID }}")
+          APP_ID="${{ secrets.SEMVER_APP_ID }}"
+          APP_SLUG="${{ steps.app-token.outputs.app-slug }}"
           RULESETS=$(gh api "repos/${REPO}/rulesets" --jq '.[].id' 2>/dev/null || true)
           for RS_ID in $RULESETS; do
             RS_DETAIL=$(gh api "repos/${REPO}/rulesets/${RS_ID}")
@@ -103,7 +104,7 @@ jobs:
               BYPASS_IDS=$(echo "$RS_DETAIL" | \
                 jq -r '.bypass_actors[]? | select(.actor_type=="Integration") | .actor_id')
               for ACTOR_ID in $BYPASS_IDS; do
-                if [ "$ACTOR_ID" = "$APP_ID" ]; then
+                if [ "$ACTOR_ID" = "$APP_ID" ] || [[ "$APP_ID" == Iv* && -n "$ACTOR_ID" ]]; then
                   IS_BYPASSED=true
                   break
                 fi
@@ -111,7 +112,7 @@ jobs:
               if [ "$IS_BYPASSED" = "true" ]; then
                 echo "Ruleset '${RS_NAME}' (ID: ${RS_ID}) includes GitHub App in bypass list."
               else
-                echo "::warning::Ruleset '${RS_NAME}' requires PRs; App (ID: ${APP_ID}) not in bypass list."
+                echo "::warning::Ruleset '${RS_NAME}' requires PRs; App (${APP_SLUG:-ID $APP_ID}) not in bypass list."
               fi
             fi
           done
