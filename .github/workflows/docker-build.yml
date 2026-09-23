@@ -128,6 +128,7 @@ jobs:
           build-args: ${{ inputs.build_args }}
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
+            type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}-dev:latest
             type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}:latest
           cache-to: |-
             type=gha,scope=${{ inputs.target_name }},mode=max

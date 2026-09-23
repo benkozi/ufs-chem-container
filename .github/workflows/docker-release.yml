@@ -55,10 +55,7 @@ jobs:
           IMAGE="${{ inputs.image_name }}"
           VERSION="${{ inputs.release_version }}"
           IS_PRERELEASE="${{ inputs.is_prerelease }}"
-          TAGS="${ORG}/${IMAGE}:${VERSION}"
-          if [ "$IS_PRERELEASE" != "true" ]; then
-            TAGS="${TAGS}"$'\n'"${ORG}/${IMAGE}:latest"
-          fi
+          TAGS="${ORG}/${IMAGE}:${VERSION}"$'\n'"${ORG}/${IMAGE}:latest"
           {
             echo "tags<<EOF"
             echo "$TAGS"
@@ -76,4 +73,5 @@ jobs:
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
           cache-to: |-
+            type=gha,scope=${{ inputs.target_name }},mode=max
             type=inline
