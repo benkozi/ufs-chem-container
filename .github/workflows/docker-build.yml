@@ -24,6 +24,16 @@ on:
         description: The image name for tagging and registry fallback
         required: true
         type: string
+      is_sandbox:
+        description: Whether to build and publish a sandbox image
+        required: false
+        type: boolean
+        default: false
+      sandbox_version:
+        description: Version tag for sandbox build
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
 jobs:
   verify-credentials:
@@ -56,6 +66,7 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
           IMAGE_NAME: ${{ inputs.image_name }}
+          IS_SANDBOX: ${{ inputs.is_sandbox }}
         run: |
           check_push_access() {
             local repo="$1"
@@ -96,9 +107,14 @@ jobs:
               return 1
             fi
           }
-          echo "Verifying push access for release repositories..."
-          check_push_access "${DOCKER_ORG}/${IMAGE_NAME}"
-          check_push_access "${DOCKER_ORG}/${IMAGE_NAME}-dev"
+          if [ "$IS_SANDBOX" = "true" ]; then
+            echo "Verifying push access for sandbox repository..."
+            check_push_access "${DOCKER_ORG}/${IMAGE_NAME}-sandbox"
+          else
+            echo "Verifying push access for release repositories..."
+            check_push_access "${DOCKER_ORG}/${IMAGE_NAME}"
+            check_push_access "${DOCKER_ORG}/${IMAGE_NAME}-dev"
+          fi
   build-test:
     name: Build and Test Image
     needs:
@@ -114,20 +130,58 @@ jobs:
         uses: docker/setup-buildx-action@v4
         with:
           driver-opts: network=host
+      - name: Configure build destination and tags
+        id: config
+        env:
+          IS_SANDBOX: ${{ inputs.is_sandbox }}
+          DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          SANDBOX_VERSION: ${{ inputs.sandbox_version }}
+        run: |
+          if [ "$IS_SANDBOX" = "true" ]; then
+            REPO="${DOCKER_ORG}/${IMAGE_NAME}-sandbox"
+            TAGS="${REPO}:${SANDBOX_VERSION}"
+            SANDBOX_CACHE="type=registry,ref=${REPO}:${SANDBOX_VERSION}"
+            {
+              echo "tags<<EOF"
+              echo "$TAGS"
+              echo "EOF"
+              echo "sandbox_cache<<EOF"
+              echo "$SANDBOX_CACHE"
+              echo "EOF"
+              echo "push_to_hub=true"
+            } >> "$GITHUB_OUTPUT"
+            echo "Configured build to publish sandbox image to Docker Hub repository: ${REPO}"
+          else
+            {
+              echo "tags=localhost:5000/${IMAGE_NAME}:latest"
+              echo "sandbox_cache="
+              echo "push_to_hub=false"
+            } >> "$GITHUB_OUTPUT"
+            echo "Configured build for local verification registry."
+          fi
       - name: Start local registry
+        if: steps.config.outputs.push_to_hub != 'true'
         run: |
           docker run -d -p 5000:5000 --name registry registry:2
+      - name: Log in to Docker Hub
+        if: steps.config.outputs.push_to_hub == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build image
         uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           push: true
-          tags: localhost:5000/${{ inputs.image_name }}:latest
+          tags: ${{ steps.config.outputs.tags }}
           platforms: linux/amd64
           build-args: ${{ inputs.build_args }}
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
+            ${{ steps.config.outputs.sandbox_cache }}
             type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}-dev:latest
             type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}:latest
           cache-to: |-
