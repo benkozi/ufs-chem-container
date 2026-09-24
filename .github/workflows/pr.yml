@@ -1,6 +1,12 @@
 name: Pull Request CI
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - edited
     branches:
       - main
       - develop
@@ -10,6 +16,53 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  check-sandbox:
+    name: Check Sandbox Configuration
+    runs-on: ubuntu-latest
+    outputs:
+      is_sandbox: ${{ steps.evaluate.outputs.is_sandbox }}
+      sandbox_version: ${{ steps.evaluate.outputs.sandbox_version }}
+    steps:
+      - name: Evaluate sandbox requirements
+        id: evaluate
+        env:
+          IS_LABELED_SANDBOX: ${{ contains(github.event.pull_request.labels.*.name, 'sandbox-build') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 -c "
+          import os, re, sys
+          is_labeled = os.environ.get('IS_LABELED_SANDBOX', 'false').lower() == 'true'
+          body = os.environ.get('PR_BODY') or ''
+          output_path = os.environ['GITHUB_OUTPUT']
+          if not is_labeled:
+              print('PR is not labeled with sandbox-build. Standard verification build will proceed.')
+              with open(output_path, 'a') as f:
+                  f.write('is_sandbox=false\n')
+                  f.write('sandbox_version=\n')
+              sys.exit(0)
+          print('PR is labeled with sandbox-build. Parsing sandbox-version from PR description...')
+
+          # Match sandbox-version=... with optional markdown bold/italic formatting (__ or **)
+          pattern = r'(?:__|\*\*)?sandbox-version(?:__|\*\*)?\s*=\s*([a-zA-Z0-9_.-]+)'
+          match = re.search(pattern, body, re.IGNORECASE)
+          if not match:
+              print('::error::PR is labeled \"sandbox-build\" but description lacks \"sandbox-version=\".')
+              print('::error::Add \"__sandbox-version__=<version>\" (e.g., 7.7.7-rc.1) to PR body.')
+              sys.exit(1)
+          version = match.group(1).strip()
+          if not version:
+              print('::error::Found \"sandbox-version=\" in PR description, but version is empty.')
+              sys.exit(1)
+
+          # Validate Docker tag format (max 128 alphanumeric, dot, dash, underscore characters)
+          if not re.match(r'^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$', version):
+              print(f'::error::Extracted sandbox version \"{version}\" is not a valid Docker image tag.')
+              sys.exit(1)
+          print(f'Valid sandbox configuration detected: version={version}')
+          with open(output_path, 'a') as f:
+              f.write('is_sandbox=true\n')
+              f.write(f'sandbox_version={version}\n')
+          "
   lint:
     name: Lint & Title Check
     uses: ./.github/workflows/lint.yml
@@ -27,6 +80,7 @@ jobs:
     name: Container Build Verification
     needs:
       - lint
+      - check-sandbox
     strategy:
       fail-fast: false
       matrix:
@@ -39,4 +93,6 @@ jobs:
       target_name: ${{ matrix.target_name }}
       dockerfile: ${{ matrix.dockerfile }}
       image_name: ${{ matrix.image_name }}
+      is_sandbox: ${{ needs.check-sandbox.outputs.is_sandbox == 'true' }}
+      sandbox_version: ${{ needs.check-sandbox.outputs.sandbox_version }}
     secrets: inherit
