@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.0-rc.1 (2026-09-24)
+
+### Features
+
+- Add sandbox build support ([#6](https://github.com/benkozi/ufs-chem-container/pull/6),
+  [`073f465`](https://github.com/benkozi/ufs-chem-container/commit/073f465ae42bfa5681cc42c77518e6dcd7c202f8))
+
+
 ## v0.1.0 (2026-09-24)
 
 
