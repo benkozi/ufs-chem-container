@@ -140,10 +140,14 @@ jobs:
         run: |
           if [ "$IS_SANDBOX" = "true" ]; then
             REPO="${DOCKER_ORG}/${IMAGE_NAME}-sandbox"
-            TAGS="${REPO}:${SANDBOX_VERSION}"$'\n'"${REPO}:latest"
+            TAGS="${REPO}:${SANDBOX_VERSION}"
+            SANDBOX_CACHE="type=registry,ref=${REPO}:${SANDBOX_VERSION}"
             {
               echo "tags<<EOF"
               echo "$TAGS"
+              echo "EOF"
+              echo "sandbox_cache<<EOF"
+              echo "$SANDBOX_CACHE"
               echo "EOF"
               echo "push_to_hub=true"
             } >> "$GITHUB_OUTPUT"
@@ -151,6 +155,7 @@ jobs:
           else
             {
               echo "tags=localhost:5000/${IMAGE_NAME}:latest"
+              echo "sandbox_cache="
               echo "push_to_hub=false"
             } >> "$GITHUB_OUTPUT"
             echo "Configured build for local verification registry."
@@ -176,7 +181,7 @@ jobs:
           build-args: ${{ inputs.build_args }}
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
-            type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}-sandbox:latest
+            ${{ steps.config.outputs.sandbox_cache }}
             type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}-dev:latest
             type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}:latest
           cache-to: |-

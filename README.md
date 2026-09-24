@@ -24,7 +24,7 @@ Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev]
 |---|---|---|---|
 | `main` | `ufschem-spack-base-ubuntu-gcc-13` | `<version>` (e.g. `0.1.0`), `latest` | Stable production base image |
 | `develop` | `ufschem-spack-base-ubuntu-gcc-13-dev` | `<version>-rc.X` (e.g. `0.1.0-rc.1`) | Prerelease release candidate |
-| PR with `sandbox-build` | `ufschem-spack-base-ubuntu-gcc-13-sandbox` | `<sandbox-version>` (e.g. `7.7.7-rc.1`), `latest` | Temporary sandbox image for external application testing prior to merge |
+| PR with `sandbox-build` | `ufschem-spack-base-ubuntu-gcc-13-sandbox` | `<sandbox-version>` (e.g. `7.7.7-rc.1`) | Temporary sandbox image for external application testing prior to merge |
 
 > **Note**: Prerelease builds on `develop` never update the `:latest` tag on Docker Hub.
 
@@ -41,7 +41,7 @@ Recipe changes may need to be tested by an external application (such as downstr
 
 ### Behavior & Constraints
 - **Validation**: If a PR is labeled with `sandbox-build` but does not include a valid `sandbox-version=` in the PR description, the CI workflow will raise an error and abort immediately.
-- **Repository Destination**: The image is published to `${DOCKER_ORG}/<image-name>-sandbox:<sandbox-version>` (and tagged with `:latest` on the sandbox repository).
+- **Repository Destination & Caching**: The image is published strictly to `${DOCKER_ORG}/<image-name>-sandbox:<sandbox-version>`. Sandbox builds do not push a `:latest` tag to eliminate collisions across concurrent pull requests; subsequent builds on the same PR reuse layer cache directly from `<image-name>-sandbox:<sandbox-version>`.
 - **Branch Isolation**: Sandbox images are **never** built or pushed on `develop` or `main` branches. They exist solely for pre-merge testing during PR review.
 - **Pulling the Sandbox Image**: External applications can pull and execute the sandbox image using:
   ```bash
