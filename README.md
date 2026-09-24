@@ -34,13 +34,13 @@ Recipe changes may need to be tested by an external application (such as downstr
 
 ### Triggering a Sandbox Build
 1. **Apply Label**: Add the `sandbox-build` label to the Pull Request.
-2. **Specify Version Tag**: Include `__sandbox-version__=<version>` (or `sandbox-version=<version>`) anywhere in the Pull Request description (body). For example:
+2. **Specify Version Tag**: Include `sandbox-version=<version>` on its own line in the Pull Request description (body). For example:
    ```markdown
-   __sandbox-version__=7.7.7-rc.1
+   sandbox-version=7.7.7-rc.1
    ```
 
 ### Behavior & Constraints
-- **Validation**: If a PR is labeled with `sandbox-build` but does not include a valid `sandbox-version=` in the PR description, the CI workflow will raise an error and abort immediately.
+- **Validation**: If a PR is labeled with `sandbox-build` but does not include a valid `sandbox-version=` on its own line in the PR description, the CI workflow will raise an error and abort immediately.
 - **Repository Destination & Caching**: The image is published strictly to `${DOCKER_ORG}/<image-name>-sandbox:<sandbox-version>`. Sandbox builds do not push a `:latest` tag to eliminate collisions across concurrent pull requests; subsequent builds on the same PR reuse layer cache directly from `<image-name>-sandbox:<sandbox-version>`.
 - **Branch Isolation**: Sandbox images are **never** built or pushed on `develop` or `main` branches. They exist solely for pre-merge testing during PR review.
 - **Pulling the Sandbox Image**: External applications can pull and execute the sandbox image using:

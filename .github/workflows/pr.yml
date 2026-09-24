@@ -42,12 +42,12 @@ jobs:
               sys.exit(0)
           print('PR is labeled with sandbox-build. Parsing sandbox-version from PR description...')
 
-          # Match sandbox-version=... with optional markdown bold/italic formatting (__ or **)
-          pattern = r'(?:__|\*\*)?sandbox-version(?:__|\*\*)?\s*=\s*([a-zA-Z0-9_.-]+)'
-          match = re.search(pattern, body, re.IGNORECASE)
+          # Match sandbox-version=<version> on its own line (with optional markdown delimiters)
+          pattern = r'^\s*(?:__|\*\*)?sandbox-version(?:__|\*\*)?\s*=\s*([a-zA-Z0-9_.-]+?)(?:__|\*\*)?\s*$'
+          match = re.search(pattern, body, re.IGNORECASE | re.MULTILINE)
           if not match:
-              print('::error::PR is labeled \"sandbox-build\" but description lacks \"sandbox-version=\".')
-              print('::error::Add \"__sandbox-version__=<version>\" (e.g., 7.7.7-rc.1) to PR body.')
+              print('::error::PR is labeled \"sandbox-build\" but lacks \"sandbox-version=\" on its own line.')
+              print('::error::Add \"sandbox-version=<version>\" (e.g., 7.7.7-rc.1) on its own line.')
               sys.exit(1)
           version = match.group(1).strip()
           if not version:
