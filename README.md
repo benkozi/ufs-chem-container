@@ -18,7 +18,7 @@ The container images built by this repository provide an exact, 100% drop-in rep
 
 ## Image Variants & Naming Conventions
 
-Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev](https://hub.docker.com/repository/docker/bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev/general). The organization namespace is configured via repository secret `DOCKER_ORG`:
+Images are hosted on Docker Hub under the [noaaepic](https://hub.docker.com/u/noaaepic) organization at [noaaepic/ufschem-spack-base-ubuntu-gcc-13-dev](https://hub.docker.com/repository/docker/noaaepic/ufschem-spack-base-ubuntu-gcc-13-dev/general). The organization namespace is configured via repository secret `DOCKER_ORG`:
 
 | Branch / Context | Image Name | Tags | Purpose |
 |---|---|---|---|
@@ -27,6 +27,28 @@ Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev]
 | PR with `sandbox-build` | `ufschem-spack-base-ubuntu-gcc-13-sandbox` | `<sandbox-version>` (e.g. `7.7.7-rc.1`) | Temporary sandbox image for external application testing prior to merge |
 
 > **Note**: Prerelease builds on `develop` never update the `:latest` tag on Docker Hub.
+
+### Pulling Pre-built Images from Docker Hub
+
+To pull pre-built images for downstream modeling or integration testing:
+
+- **Production release**:
+  ```bash
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13:latest
+  # or specific version:
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13:0.1.0
+  ```
+
+- **Prerelease candidate**:
+  ```bash
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13-dev:0.1.0-rc.1
+  ```
+
+- **Sandbox test build**:
+  ```bash
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13-sandbox:7.7.7-rc.1
+  ```
+
 
 ## Sandbox Builds for Testing and Development
 
@@ -45,7 +67,7 @@ Recipe changes may need to be tested by an external application (such as downstr
 - **Branch Isolation**: Sandbox images are **never** built or pushed on `develop` or `main` branches. They exist solely for pre-merge testing during PR review.
 - **Pulling the Sandbox Image**: External applications can pull and execute the sandbox image using:
   ```bash
-  docker pull bkrlps/ufschem-spack-base-ubuntu-gcc-13-sandbox:7.7.7-rc.1
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13-sandbox:7.7.7-rc.1
   ```
 
 
@@ -75,9 +97,9 @@ spack find
 The GitHub Actions workflows require the following repository-level secrets when publishing images (all Docker configuration is managed via repository secrets with no defaults):
 
 - **Repository Secrets**:
-  - `DOCKER_ORG`: Docker Hub organization / namespace.
-  - `DOCKER_USERNAME`: Docker Hub account username.
-  - `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions.
+  - `DOCKER_ORG`: Docker Hub organization / namespace (`noaaepic`).
+  - `DOCKER_USERNAME`: Docker Hub account username with write permissions to `noaaepic`.
+  - `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions for `noaaepic`.
   - `SEMVER_APP_ID`: GitHub App Client ID (or App ID) for automated semantic release.
   - `SEMVER_APP_PRIVATE_KEY`: GitHub App private key (`.pem`) for automated semantic release and branch protection bypass.
 
