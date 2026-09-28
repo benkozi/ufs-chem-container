@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.0-rc.2 (2026-09-28)
+
+### Features
+
+- Change to noaaepic registry ([#9](https://github.com/benkozi/ufs-chem-container/pull/9),
+  [`20a5a9e`](https://github.com/benkozi/ufs-chem-container/commit/20a5a9e1159d9bdde6c7a79aba31d108b9555dfe))
+
+
 ## v0.2.0-rc.1 (2026-09-24)
 
 ### Features
