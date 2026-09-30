@@ -8,57 +8,8 @@ Base container recipes and automated build infrastructure for UFS Chemistry (UFS
 
 ## Supported Container Images & Dockerfiles
 
-This repository maintains modular Dockerfiles under [`docker/`](docker/) to generate standardized base environments for UFS Chemistry applications.
+- [`docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13`](docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13): Ubuntu 24.04 base container environment built with the GCC 13 toolchain, Rust, and a pre-configured spack-stack environment for UFS Chemistry modeling applications.
 
-### `ufschem-spack-base-ubuntu-gcc-13`
-
-- **Dockerfile**: [`docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13`](docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13)
-- **Target Scope**: `spack-base`
-- **Base OS**: Ubuntu 24.04 LTS (`noble`)
-- **Architecture**: `linux/amd64`
-- **Compiler**: GCC 13 (`build-essential`, `gfortran`)
-
-#### Environment & Installed Packages
-
-- **System Toolchain & Build Utilities**:
-  - Compilers & build tools: `build-essential`, `gfortran`, `cmake`, `ninja-build`
-  - Communications & Parallel I/O: OpenMPI (`libopenmpi-dev`), NetCDF-C (`libnetcdf-dev`), NetCDF-Fortran (`libnetcdff-dev`), Lapack (`liblapack-dev`), OpenBLAS (`libopenblas-dev`)
-  - Interpreters & Runtimes: Python 3.12 (`python3-dev`, `python3-venv`, `python3-pip`, `cython3`), Rust (stable toolchain installed via rustup in `/usr/local/rustup` and `/usr/local/cargo`)
-  - Scientific & Utility Libraries: `nco`, `libxml2`, `libxml2-dev`, `libxml2-utils`, `libcurl4-openssl-dev`, `gettext`, `tmux`, `less`, `vim`, `git`, `tar`
-- **Spack-Stack Integration**:
-  - Cloned from [JCSDA/spack-stack](https://github.com/JCSDA/spack-stack) at commit `37c009d` (release v2.1.1) into `/opt/ufschem/spack-stack`.
-  - External system packages registered: `rust`, `curl`, `perl`, `git`, `python`, `py-cython`, `cmake`, `gettext`, `findutils`, `tar`, `libxml2`, `openssl`, `openmpi`.
-- **Pre-Concretized Spack Environment (`ufschem`)**:
-  - `esmf` (linked against system OpenMPI `^openmpi`)
-  - `yaml-cpp`
-  - `parallelio+pnetcdf`
-  - `py-pip`
-  - Fully concretized, built with `--fail-fast`, garbage-collected, and package cache cleaned.
-- **Runtime Environment & Activation**:
-  - Default shell: `/bin/bash`
-  - Default working directory: `/opt`
-  - Automatic activation: `~/.bashrc` automatically sources `/opt/ufschem/spack-stack/setup.sh` and executes `spack env activate ufschem`.
-
-#### Local Build & Interactive Usage
-
-To build the image locally with Docker Buildx:
-
-```bash
-docker buildx build -f docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13 -t ufschem-spack-base-ubuntu-gcc-13:local .
-```
-
-To run the container interactively and verify the Spack environment:
-
-```bash
-docker run -it --rm ufschem-spack-base-ubuntu-gcc-13:local bash
-```
-
-Inside the container:
-
-```bash
-spack env status
-spack find
-```
 
 ## Image Variants & Naming Conventions
 
@@ -155,13 +106,8 @@ uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 uv run pre-commit run --all-files
 ```
 
-The pre-commit hooks include:
-- `conventional-pre-commit`: Enforces Conventional Commit grammar on commit messages.
-- `trailing-whitespace` & `end-of-file-fixer`: General file hygiene.
-- `check-toml`: Syntax validation for `pyproject.toml`.
-- `ruff` (linter & formatter): Python code quality.
-- `mypy`: Static type analysis.
-- `yamlfix` & `yamllint`: YAML style and syntax checking.
+See [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for the list of configured checks.
+
 
 ## Release Process & Conventional Commits
 
