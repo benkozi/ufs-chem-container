@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.0-rc.3 (2026-09-30)
+
+### Features
+
+- Migrate to ufs-community ([#11](https://github.com/ufs-community/ufs-chem-container/pull/11),
+  [`0748017`](https://github.com/ufs-community/ufs-chem-container/commit/07480171001922bb4fd276a2a137305e3bad65fa))
+
+
 ## v0.2.0-rc.2 (2026-09-28)
 
 ### Features
