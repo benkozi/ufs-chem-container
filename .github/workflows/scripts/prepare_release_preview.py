@@ -45,12 +45,11 @@ def prepare_preview(target: str, pr_title: str) -> None:
 
     if pr_title.strip():
         pr_head = run_git(["rev-parse", "HEAD"]).stdout.strip()
-        logger.info("PR head SHA: %s", pr_head)
         run_git(["checkout", "-B", target, f"origin/{target}"])
 
-        merge_res = run_git(["merge", "--squash", pr_head], check=False)
-        if merge_res.returncode != 0:
-            logger.warning("Squash merge encountered conflicts or errors; aborting merge.")
+        # ponytail: inline squash merge attempt and fallback abort
+        if run_git(["merge", "--squash", pr_head], check=False).returncode != 0:
+            logger.warning("Squash merge encountered conflicts; aborting merge.")
             run_git(["merge", "--abort"], check=False)
 
         logger.info("Applying synthetic squash-merge commit from PR title: %s", pr_title)

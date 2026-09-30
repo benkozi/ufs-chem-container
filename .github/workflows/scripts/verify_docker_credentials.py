@@ -15,11 +15,10 @@ logger = logging.getLogger(__name__)
 
 def write_github_output(outputs: dict[str, str]) -> None:
     """Write key-value pairs to GITHUB_OUTPUT environment file."""
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if not output_path:
-        return
-    with open(output_path, "a", encoding="utf-8") as f:
-        f.writelines(f"{k}={v}\n" for k, v in outputs.items())
+    # ponytail: 3-line standard environment file export
+    if out := os.environ.get("GITHUB_OUTPUT"):
+        with open(out, "a", encoding="utf-8") as f:
+            f.writelines(f"{k}={v}\n" for k, v in outputs.items())
 
 
 def check_secrets(org: str, username: str, token: str, allow_missing: bool) -> int:
@@ -28,14 +27,12 @@ def check_secrets(org: str, username: str, token: str, allow_missing: bool) -> i
     Returns:
         int: 0 if valid or gracefully skipped, 1 if missing required secrets.
     """
-    missing: list[str] = []
-    if not org.strip():
-        missing.append("DOCKER_ORG")
-    if not username.strip():
-        missing.append("DOCKER_USERNAME")
-    if not token.strip():
-        missing.append("DOCKERHUB_TOKEN")
-
+    # ponytail: list comprehension replaces imperative append blocks
+    missing = [
+        name
+        for name, val in [("DOCKER_ORG", org), ("DOCKER_USERNAME", username), ("DOCKERHUB_TOKEN", token)]
+        if not val.strip()
+    ]
     if missing:
         missing_str = " ".join(missing)
         if allow_missing:
@@ -209,12 +206,8 @@ def main() -> int:
         return check_secrets(args.org, args.username, args.token, args.allow_missing)
 
     if args.command == "check-push":
-        # Handle case where repositories may be passed as space- or comma-delimited strings within args
-        repos: list[str] = []
-        for r in args.repositories:
-            for item in r.replace(",", " ").split():
-                if item.strip():
-                    repos.append(item.strip())
+        # ponytail: flatten comma/space delimited repositories via list comprehension
+        repos = [item for r in args.repositories for item in r.replace(",", " ").split() if item]
         return check_push(repos, args.username, args.token)
 
     return 1

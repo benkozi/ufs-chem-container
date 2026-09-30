@@ -4,6 +4,7 @@
 import argparse
 import logging
 import os
+import re
 import subprocess
 import sys
 
@@ -12,9 +13,7 @@ logger = logging.getLogger(__name__)
 
 def str_to_bool(val: str | bool) -> bool:
     """Convert string or boolean value to boolean."""
-    if isinstance(val, bool):
-        return val
-    return str(val).strip().lower() in ("true", "1", "yes")
+    return val if isinstance(val, bool) else str(val).strip().lower() in ("true", "1", "yes")
 
 
 def parse_args() -> argparse.Namespace:
@@ -74,11 +73,10 @@ def is_prerelease(version: str, target: str) -> bool:
 
 def write_github_output(outputs: dict[str, str]) -> None:
     """Write key-value pairs to GITHUB_OUTPUT environment file."""
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if not output_path:
-        return
-    with open(output_path, "a", encoding="utf-8") as f:
-        f.writelines(f"{k}={v}\n" for k, v in outputs.items())
+    # ponytail: 3-line standard environment file export
+    if out := os.environ.get("GITHUB_OUTPUT"):
+        with open(out, "a", encoding="utf-8") as f:
+            f.writelines(f"{k}={v}\n" for k, v in outputs.items())
 
 
 def get_git_diff() -> str:
@@ -90,67 +88,50 @@ def get_git_diff() -> str:
 
 
 def extract_version_from_toml(text: str) -> str:
-    """Extract project version from TOML content using tomllib or regular expressions."""
-    try:
-        import tomllib
-
-        data = tomllib.loads(text)
-        ver = data.get("project", {}).get("version")
-        if ver:
-            return str(ver).strip().lstrip("v")
-    except (tomllib.TOMLDecodeError, AttributeError, TypeError, KeyError) as exc:
-        logger.debug("Could not parse TOML content with tomllib: %s", exc)
-
-    import re
-
+    """Extract project version from TOML content using regex."""
+    # ponytail: direct stdlib regex on version = "..." replaces tomllib ceremony
     match = re.search(r'^\s*version\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
-    if match:
-        return match.group(1).strip().lstrip("v")
-    return ""
+    return match.group(1).strip().lstrip("v") if match else ""
 
 
 def determine_current_version(target: str, released: bool, dry_run: bool) -> str:
     """Determine the current version before this release evaluation."""
-    refs_to_try: list[str] = []
-    if not dry_run and released:
-        refs_to_try.extend(["HEAD~1", "HEAD~2"])
-    else:
-        if target:
-            refs_to_try.extend([f"origin/{target}", target])
-        refs_to_try.extend(["HEAD~1", "HEAD"])
-
-    for ref in refs_to_try:
+    # ponytail: probe candidate refs in single unified pass
+    refs = (
+        ["HEAD~1", "HEAD~2"]
+        if (not dry_run and released)
+        else ([f"origin/{target}", target] if target else []) + ["HEAD~1", "HEAD"]
+    )
+    for ref in refs:
         try:
-            tag = subprocess.check_output(
-                ["git", "describe", "--tags", "--abbrev=0", ref],
-                text=True,
-                stderr=subprocess.DEVNULL,
-            ).strip()
-            if tag:
-                return tag.lstrip("v")
+            return (
+                subprocess.check_output(
+                    ["git", "describe", "--tags", "--abbrev=0", ref],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
+                .strip()
+                .lstrip("v")
+            )
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
-
-    for ref in refs_to_try:
         try:
             content = subprocess.check_output(
                 ["git", "show", f"{ref}:pyproject.toml"],
                 text=True,
                 stderr=subprocess.DEVNULL,
             )
-            ver = extract_version_from_toml(content)
-            if ver:
+            if ver := extract_version_from_toml(content):
                 return ver
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
 
     try:
         with open("pyproject.toml", encoding="utf-8") as f:
-            ver = extract_version_from_toml(f.read())
-            if ver:
+            if ver := extract_version_from_toml(f.read()):
                 return ver
-    except OSError as exc:
-        logger.debug("Local pyproject.toml not readable: %s", exc)
+    except OSError:
+        pass
 
     return "None"
 

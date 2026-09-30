@@ -12,9 +12,7 @@ logger = logging.getLogger(__name__)
 
 def str_to_bool(val: str | bool) -> bool:
     """Convert string or boolean value to boolean."""
-    if isinstance(val, bool):
-        return val
-    return str(val).strip().lower() in ("true", "1", "yes")
+    return val if isinstance(val, bool) else str(val).strip().lower() in ("true", "1", "yes")
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,11 +33,10 @@ def parse_args() -> argparse.Namespace:
 
 def write_github_output(outputs: dict[str, str]) -> None:
     """Write key-value pairs to GITHUB_OUTPUT environment file."""
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if not output_path:
-        return
-    with open(output_path, "a", encoding="utf-8") as f:
-        f.writelines(f"{k}={v}\n" for k, v in outputs.items())
+    # ponytail: 3-line standard environment file export
+    if out := os.environ.get("GITHUB_OUTPUT"):
+        with open(out, "a", encoding="utf-8") as f:
+            f.writelines(f"{k}={v}\n" for k, v in outputs.items())
 
 
 def evaluate_sandbox(is_labeled: bool, body: str) -> tuple[bool, str]:
@@ -67,10 +64,7 @@ def evaluate_sandbox(is_labeled: bool, body: str) -> tuple[bool, str]:
         )
 
     version = match.group(1).strip()
-    if not version:
-        raise ValueError('Found "sandbox-version=" in PR description, but version is empty.')
-
-    # Validate Docker tag format (max 128 alphanumeric, dot, dash, underscore characters)
+    # ponytail: regex group enforces non-empty; proceed directly to Docker tag validation
     if not re.match(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$", version):
         raise ValueError(f'Extracted sandbox version "{version}" is not a valid Docker image tag.')
 

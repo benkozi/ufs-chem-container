@@ -13,21 +13,18 @@ logger = logging.getLogger(__name__)
 
 def write_github_output(outputs: dict[str, str]) -> None:
     """Write key-value pairs to GITHUB_OUTPUT environment file."""
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if not output_path:
-        return
-    with open(output_path, "a", encoding="utf-8") as f:
-        f.writelines(f"{k}={v}\n" for k, v in outputs.items())
+    # ponytail: 3-line standard environment file export
+    if out := os.environ.get("GITHUB_OUTPUT"):
+        with open(out, "a", encoding="utf-8") as f:
+            f.writelines(f"{k}={v}\n" for k, v in outputs.items())
 
 
 def check_secrets(app_id: str, private_key: str, allow_missing: bool) -> int:
     """Validate presence and structure of Semantic Release GitHub App secrets."""
-    missing: list[str] = []
-    if not app_id.strip():
-        missing.append("SEMVER_APP_ID")
-    if not private_key.strip():
-        missing.append("SEMVER_APP_PRIVATE_KEY")
-
+    # ponytail: list comprehension replaces imperative append blocks
+    missing = [
+        name for name, val in [("SEMVER_APP_ID", app_id), ("SEMVER_APP_PRIVATE_KEY", private_key)] if not val.strip()
+    ]
     if missing:
         missing_str = " ".join(missing)
         if allow_missing:
@@ -99,41 +96,34 @@ def check_permissions(repo: str, sha: str, run_id: str, branches: list[str], app
     code, out = run_gh_api(f"repos/{repo}/rulesets")
     if code == 0:
         try:
-            rulesets = json.loads(out)
-            for rs in rulesets:
-                rs_id = rs.get("id")
-                if not rs_id:
+            # ponytail: flatten ruleset inspection with early-continue guard clauses
+            for rs in json.loads(out):
+                if not (rs_id := rs.get("id")):
                     continue
                 d_code, d_out = run_gh_api(f"repos/{repo}/rulesets/{rs_id}")
                 if d_code != 0:
                     continue
-                rs_detail = json.loads(d_out)
-                has_pr = any(r.get("type") == "pull_request" for r in rs_detail.get("rules", []))
-                if not has_pr:
+                detail = json.loads(d_out)
+                if not any(r.get("type") == "pull_request" for r in detail.get("rules", [])):
                     continue
 
-                rs_name = rs_detail.get("name", str(rs_id))
-                can_bypass = rs_detail.get("current_user_can_bypass", "never") == "always"
-                bypass_integrations = [
-                    a.get("actor_id")
-                    for a in rs_detail.get("bypass_actors", [])
-                    if a.get("actor_type") == "Integration" and a.get("bypass_mode") == "always"
-                ]
+                rs_name = detail.get("name", str(rs_id))
+                can_bypass = detail.get("current_user_can_bypass") == "always"
+                has_bypass = can_bypass or any(
+                    a.get("actor_type") == "Integration" and a.get("bypass_mode") == "always"
+                    for a in detail.get("bypass_actors", [])
+                )
 
-                is_bypassed = can_bypass or len(bypass_integrations) > 0
+                actor_desc = app_slug or f"ID {app_id}"
                 for branch in branches:
-                    if is_bypassed:
+                    if has_bypass:
                         logger.info(
-                            "Ruleset '%s' (ID: %s) includes App (%s) in bypass list for %s.",
-                            rs_name,
-                            rs_id,
-                            app_slug or f"ID {app_id}",
-                            branch,
+                            "Ruleset '%s' includes App (%s) in bypass list for %s.", rs_name, actor_desc, branch
                         )
                     else:
                         print(
                             f"::warning::Ruleset '{rs_name}' requires PRs on {branch}; "
-                            f"App ({app_slug or f'ID {app_id}'}) not in bypass list."
+                            f"App ({actor_desc}) not in bypass list."
                         )
         except json.JSONDecodeError:
             pass
@@ -211,11 +201,8 @@ def main() -> int:
         return check_secrets(args.app_id, args.private_key, args.allow_missing)
 
     if args.command == "check-permissions":
-        branches: list[str] = []
-        for b in args.branches:
-            for item in b.replace(",", " ").split():
-                if item.strip():
-                    branches.append(item.strip())
+        # ponytail: flatten comma/space delimited branches via list comprehension
+        branches = [item for b in args.branches for item in b.replace(",", " ").split() if item]
         return check_permissions(args.repo, args.sha, args.run_id, branches, args.app_id, args.app_slug)
 
     return 1
