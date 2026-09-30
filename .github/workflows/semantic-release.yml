@@ -18,6 +18,9 @@ on:
         type: string
         default: ''
     outputs:
+      current_version:
+        description: The current version before release evaluation
+        value: ${{ jobs.release.outputs.current_version }}
       new_release_version:
         description: The version of the new release
         value: ${{ jobs.release.outputs.new_release_version }}
@@ -35,208 +38,88 @@ jobs:
     name: Verify Semantic Release Credentials
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
       - name: Validate secrets presence
+        id: check
         env:
           SEMVER_APP_ID: ${{ secrets.SEMVER_APP_ID }}
           SEMVER_APP_PRIVATE_KEY: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
         run: |
-          MISSING=""
-          [ -z "$SEMVER_APP_ID" ] && MISSING="${MISSING} SEMVER_APP_ID"
-          [ -z "$SEMVER_APP_PRIVATE_KEY" ] && MISSING="${MISSING} SEMVER_APP_PRIVATE_KEY"
-          if [ -n "$MISSING" ]; then
-            echo "::error::Missing required Semantic Release repository secrets:${MISSING}"
-            exit 1
-          fi
-          python3 -c "
-          import os, sys
-          key = os.environ.get('SEMVER_APP_PRIVATE_KEY', '').strip()
-          if key.endswith('.pem') or key.startswith('/') or key.startswith('~'):
-              print('::error::SEMVER_APP_PRIVATE_KEY is a file path. Paste file contents instead.')
-              sys.exit(1)
-          if '-----BEGIN' not in key or '-----END' not in key:
-              print('::error::SEMVER_APP_PRIVATE_KEY missing BEGIN/END RSA PRIVATE KEY markers.')
-              sys.exit(1)
-          if (key.startswith('\"') and key.endswith('\"')) or (key.startswith(\"'\") and key.endswith(\"'\")):
-              print('::error::SEMVER_APP_PRIVATE_KEY wrapped in quotes. Remove quotes in Secrets.')
-              sys.exit(1)
-          "
-          echo "All required Semantic Release secrets are present and formatted."
+          python3 .github/workflows/scripts/verify_semantic_release_credentials.py check-secrets \
+            ${{ (inputs.dry_run || github.event_name == 'pull_request') && '--allow-missing' || '' }}
       - name: Generate GitHub App Token
+        if: steps.check.outputs.skip_verification != 'true'
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
           client-id: ${{ secrets.SEMVER_APP_ID }}
           private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
       - name: Verify repository write and ref permissions
+        if: steps.check.outputs.skip_verification != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
-          TARGET_BRANCH: ${{ inputs.target_branch || github.base_ref || github.ref_name }}
+          SHA: ${{ github.sha }}
           RUN_ID: ${{ github.run_id }}
+          APP_ID: ${{ secrets.SEMVER_APP_ID }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
         run: |
-          echo "Verifying GitHub App permissions for ${REPO}..."
-          ACCESSIBLE=$(gh api "/installation/repositories" \
-            --jq '[.repositories[].full_name] | contains(["'${REPO}'"])')
-          if [ "$ACCESSIBLE" != "true" ]; then
-            echo "::error::GitHub App is not installed on repository ${REPO}."
-            exit 1
-          fi
-          echo "GitHub App repository access confirmed."
-          TEST_REF="tags/ci-perm-check-${RUN_ID}"
-          SHA="${{ github.sha }}"
-          echo "Testing Git ref creation (${TEST_REF})..."
-          if ! gh api -X POST "repos/${REPO}/git/refs" -f ref="refs/${TEST_REF}" -f sha="${SHA}" >/dev/null 2>&1; then
-            echo "::error::Failed to create test Git ref on ${REPO}. Verify App has 'Contents: Read and write'."
-            exit 1
-          fi
-          echo "Git ref creation succeeded. Cleaning up test ref..."
-          gh api -X DELETE "repos/${REPO}/git/refs/${TEST_REF}" >/dev/null 2>&1 || true
-          echo "Checking branch ruleset bypass configuration for target: ${TARGET_BRANCH}..."
-          APP_ID="${{ secrets.SEMVER_APP_ID }}"
-          APP_SLUG="${{ steps.app-token.outputs.app-slug }}"
-          RULESETS=$(gh api "repos/${REPO}/rulesets" --jq '.[].id' 2>/dev/null || true)
-          for RS_ID in $RULESETS; do
-            RS_DETAIL=$(gh api "repos/${REPO}/rulesets/${RS_ID}")
-            HAS_PR=$(echo "$RS_DETAIL" | jq '[.rules[] | select(.type=="pull_request")] | length > 0')
-            if [ "$HAS_PR" = "true" ]; then
-              RS_NAME=$(echo "$RS_DETAIL" | jq -r '.name')
-              CAN_BYPASS=$(echo "$RS_DETAIL" | jq -r '.current_user_can_bypass // "never"')
-              IS_BYPASSED=false
-              if [ "$CAN_BYPASS" = "always" ]; then
-                IS_BYPASSED=true
-              fi
-              BYPASS_INTEGRATIONS=$(echo "$RS_DETAIL" | \
-                jq -r '.bypass_actors[]? | select(.actor_type=="Integration" and .bypass_mode=="always") | .actor_id')
-              if [ -n "$BYPASS_INTEGRATIONS" ]; then
-                IS_BYPASSED=true
-              fi
-              if [ "$IS_BYPASSED" = "true" ]; then
-                echo "Ruleset '${RS_NAME}' (ID: ${RS_ID}) includes GitHub App (${APP_SLUG}) in bypass list."
-              else
-                echo "::warning::Ruleset '${RS_NAME}' requires PRs; App (${APP_SLUG:-ID $APP_ID}) not in bypass list."
-              fi
-            fi
-          done
-          echo "Semantic release credential verification completed successfully."
+          python3 .github/workflows/scripts/verify_semantic_release_credentials.py check-permissions \
+            --branches "${{ inputs.target_branch || github.base_ref || github.ref_name }}"
   release:
     name: Semantic Release
     needs:
       - verify-credentials
     runs-on: ubuntu-latest
     outputs:
+      current_version: ${{ steps.eval.outputs.current_version }}
       new_release_version: ${{ steps.release.outputs.version }}
       new_release_published: ${{ steps.release.outputs.released }}
       is_prerelease: ${{ steps.eval.outputs.is_prerelease }}
       tag: ${{ steps.release.outputs.tag }}
+    env:
+      SEMVER_APP_ID: ${{ secrets.SEMVER_APP_ID }}
+      SEMVER_APP_PRIVATE_KEY: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
     steps:
-      - name: Generate GitHub App Token
+      - name: Generate GitHub App Token (if configured)
         id: app-token
+        if: env.SEMVER_APP_ID != '' && env.SEMVER_APP_PRIVATE_KEY != ''
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.SEMVER_APP_ID }}
-          private-key: ${{ secrets.SEMVER_APP_PRIVATE_KEY }}
+          client-id: ${{ env.SEMVER_APP_ID }}
+          private-key: ${{ env.SEMVER_APP_PRIVATE_KEY }}
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
           persist-credentials: true
       - name: Prepare branch for release evaluation
         if: inputs.dry_run || github.event_name == 'pull_request'
         env:
           PR_TITLE: ${{ inputs.pr_title }}
+          TARGET: ${{ inputs.target_branch || github.base_ref || github.ref_name }}
         run: |
-          TARGET="${{ inputs.target_branch || github.base_ref || github.ref_name }}"
-          echo "Evaluating release against target branch: $TARGET"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -n "$PR_TITLE" ]; then
-            PR_HEAD="$(git rev-parse HEAD)"
-            git checkout -B "$TARGET" "origin/$TARGET"
-            git merge --squash "$PR_HEAD" || git merge --abort || true
-            echo "Applying synthetic squash-merge commit from PR title: $PR_TITLE"
-            git commit --allow-empty -m "$PR_TITLE"
-          else
-            git checkout -B "$TARGET"
-          fi
+          python3 .github/workflows/scripts/prepare_release_preview.py
       - name: Python Semantic Release
         uses: python-semantic-release/python-semantic-release@v10
         id: release
         with:
-          github_token: ${{ steps.app-token.outputs.token }}
+          github_token: ${{ steps.app-token.outputs.token || github.token }}
           commit: ${{ !(inputs.dry_run || github.event_name == 'pull_request') }}
           tag: ${{ !(inputs.dry_run || github.event_name == 'pull_request') }}
           push: ${{ !(inputs.dry_run || github.event_name == 'pull_request') }}
           vcs_release: ${{ !(inputs.dry_run || github.event_name == 'pull_request') }}
-      - name: Evaluate Release Information
+      - name: Evaluate and Report Release
         id: eval
         if: always()
-        run: |
-          VERSION="${{ steps.release.outputs.version }}"
-          RELEASED="${{ steps.release.outputs.released }}"
-          TARGET="${{ inputs.target_branch || github.base_ref || github.ref_name }}"
-          IS_PRERELEASE="false"
-          if [[ "$VERSION" == *"-"* ]] || [[ "$TARGET" == "develop" ]]; then
-            IS_PRERELEASE="true"
-          fi
-          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
-          echo "target_branch=$TARGET" >> "$GITHUB_OUTPUT"
-      - name: Report Release Actions
-        if: always()
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          RELEASED: ${{ steps.release.outputs.released }}
+          TARGET: ${{ inputs.target_branch || github.base_ref || github.ref_name }}
+          DRY_RUN: ${{ inputs.dry_run || github.event_name == 'pull_request' }}
+          DOCKER_ORG: ${{ secrets.DOCKER_ORG || 'noaaepic' }}
         run: |-
-          TARGET="${{ steps.eval.outputs.target_branch }}"
-          VERSION="${{ steps.release.outputs.version }}"
-          TAG="${{ steps.release.outputs.tag }}"
-          RELEASED="${{ steps.release.outputs.released }}"
-          IS_PRERELEASE="${{ steps.eval.outputs.is_prerelease }}"
-          ORG="${{ secrets.DOCKER_ORG }}"
-          REPORT_FILE=$(mktemp)
-          {
-            echo "### 🚀 Semantic Release Plan"
-            if [ "${{ inputs.dry_run || github.event_name == 'pull_request' }}" = "true" ]; then
-              echo "**Mode**: Preview (Dry Run / No-op) — No tags or releases created in this run."
-            else
-              echo "**Mode**: Production Execution"
-            fi
-            echo ""
-            echo "| Parameter | Value |"
-            echo "|---|---|"
-            echo "| Target Branch | \`$TARGET\` |"
-            echo "| Next Version | \`${VERSION:-None}\` |"
-            echo "| Git Tag | \`${TAG:-None}\` |"
-            echo "| Will Release? | \`$RELEASED\` |"
-            echo "| Is Prerelease? | \`$IS_PRERELEASE\` |"
-            echo ""
-            if [ "$RELEASED" = "true" ]; then
-              echo "#### 📦 Actions on Merge to \`$TARGET\`:"
-              echo "- Git tag \`$TAG\` will be created."
-              echo "- Release notes and \`CHANGELOG.md\` will be published."
-              if [ "$IS_PRERELEASE" = "true" ]; then
-                DEV_IMAGE="${ORG:+$ORG/}ufschem-spack-base-ubuntu-gcc-13-dev"
-                echo "- Container \`$DEV_IMAGE:$VERSION\` will be built/pushed."
-                echo "- Docker tag \`:latest\` will be updated on \`$DEV_IMAGE\` (develop prerelease candidate)."
-              else
-                PROD_IMAGE="${ORG:+$ORG/}ufschem-spack-base-ubuntu-gcc-13"
-                echo "- Container \`$PROD_IMAGE:$VERSION\` will be built/pushed."
-                echo "- Docker tag \`:latest\` will be updated to \`$VERSION\` on \`$PROD_IMAGE\` (production release)."
-              fi
-              if [ "${{ inputs.dry_run || github.event_name == 'pull_request' }}" = "true" ]; then
-                DIFF_OUTPUT="$(git diff HEAD)"
-                if [ -n "$DIFF_OUTPUT" ]; then
-                  echo ""
-                  echo "#### 📝 Projected Repository Diff"
-                  echo "<details open>"
-                  echo "<summary>Click to collapse projected file changes</summary>"
-                  echo ""
-                  echo "\`\`\`diff"
-                  printf '%s\n' "$DIFF_OUTPUT"
-                  echo "\`\`\`"
-                  echo "</details>"
-                fi
-              fi
-            else
-              echo "#### ℹ️ No release will be triggered on merge based on current commit history."
-            fi
-          } > "$REPORT_FILE"
-          cat "$REPORT_FILE"
-          cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          python3 .github/workflows/scripts/report_release.py
