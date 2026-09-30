@@ -20,10 +20,8 @@ on:
         description: Extracted sandbox version tag
         value: ${{ jobs.check.outputs.sandbox_version }}
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   check:
     name: Evaluate Sandbox
@@ -39,5 +37,5 @@ jobs:
         env:
           IS_LABELED_SANDBOX: ${{ inputs.is_labeled_sandbox }}
           PR_BODY: ${{ inputs.pr_body }}
-        run: |
+        run: |-
           python3 .github/workflows/scripts/check_sandbox_config.py

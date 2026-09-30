@@ -1,30 +1,20 @@
 name: main
-
 on:
   push:
     branches:
       - main
       - develop
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - labeled
-      - edited
     branches:
       - main
       - develop
   workflow_dispatch:
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 permissions:
   contents: write
   id-token: write
-
 jobs:
   check-sandbox:
     name: Check Sandbox Configuration
@@ -33,13 +23,11 @@ jobs:
     with:
       is_labeled_sandbox: ${{ contains(github.event.pull_request.labels.*.name, 'sandbox-build') }}
       pr_body: ${{ github.event.pull_request.body || '' }}
-
   lint:
     name: Lint & Title Check
     uses: ./.github/workflows/lint.yml
     with:
       pr_title: ${{ github.event.pull_request.title || '' }}
-
   release-preview:
     name: Semantic Release Preview
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
@@ -49,7 +37,6 @@ jobs:
       target_branch: ${{ github.base_ref || github.ref_name }}
       pr_title: ${{ github.event.pull_request.title || '' }}
     secrets: inherit
-
   build-test:
     name: Container Build Verification
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
@@ -71,7 +58,6 @@ jobs:
       is_sandbox: ${{ needs.check-sandbox.outputs.is_sandbox == 'true' }}
       sandbox_version: ${{ needs.check-sandbox.outputs.sandbox_version }}
     secrets: inherit
-
   release:
     name: Semantic Release
     if: >-
@@ -84,7 +70,6 @@ jobs:
       dry_run: false
       target_branch: ${{ github.ref_name }}
     secrets: inherit
-
   docker-release:
     name: Publish Container Images
     needs:
