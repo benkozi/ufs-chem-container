@@ -59,6 +59,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("IMAGE_NAME", "ufschem-spack-base-ubuntu-gcc-13"),
         help="Base container image name (default: ufschem-spack-base-ubuntu-gcc-13).",
     )
+    parser.add_argument(
+        "--current-version",
+        default=os.environ.get("CURRENT_VERSION", ""),
+        help="Current release version being evaluated against.",
+    )
     return parser.parse_args()
 
 
@@ -84,8 +89,75 @@ def get_git_diff() -> str:
         return ""
 
 
+def extract_version_from_toml(text: str) -> str:
+    """Extract project version from TOML content using tomllib or regular expressions."""
+    try:
+        import tomllib
+
+        data = tomllib.loads(text)
+        ver = data.get("project", {}).get("version")
+        if ver:
+            return str(ver).strip().lstrip("v")
+    except (tomllib.TOMLDecodeError, AttributeError, TypeError, KeyError) as exc:
+        logger.debug("Could not parse TOML content with tomllib: %s", exc)
+
+    import re
+
+    match = re.search(r'^\s*version\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
+    if match:
+        return match.group(1).strip().lstrip("v")
+    return ""
+
+
+def determine_current_version(target: str, released: bool, dry_run: bool) -> str:
+    """Determine the current version before this release evaluation."""
+    refs_to_try: list[str] = []
+    if not dry_run and released:
+        refs_to_try.extend(["HEAD~1", "HEAD~2"])
+    else:
+        if target:
+            refs_to_try.extend([f"origin/{target}", target])
+        refs_to_try.extend(["HEAD~1", "HEAD"])
+
+    for ref in refs_to_try:
+        try:
+            tag = subprocess.check_output(
+                ["git", "describe", "--tags", "--abbrev=0", ref],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            if tag:
+                return tag.lstrip("v")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+    for ref in refs_to_try:
+        try:
+            content = subprocess.check_output(
+                ["git", "show", f"{ref}:pyproject.toml"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            ver = extract_version_from_toml(content)
+            if ver:
+                return ver
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+
+    try:
+        with open("pyproject.toml", encoding="utf-8") as f:
+            ver = extract_version_from_toml(f.read())
+            if ver:
+                return ver
+    except OSError as exc:
+        logger.debug("Local pyproject.toml not readable: %s", exc)
+
+    return "None"
+
+
 def generate_report(
     target: str,
+    current_version: str,
     version: str,
     tag: str,
     released: bool,
@@ -104,6 +176,7 @@ def generate_report(
     lines.append("| Parameter | Value |")
     lines.append("|---|---|")
     lines.append(f"| Target Branch | `{target}` |")
+    lines.append(f"| Current Version | `{current_version or 'None'}` |")
     lines.append(f"| Next Version | `{version or 'None'}` |")
     lines.append(f"| Git Tag | `{tag or 'None'}` |")
     lines.append(f"| Will Release? | `{str(released).lower()}` |")
@@ -153,6 +226,7 @@ def main() -> int:
     dry_run = str_to_bool(args.dry_run)
     org = args.org.strip()
     image_name = args.image_name.strip()
+    current_version = args.current_version.strip() or determine_current_version(target, released, dry_run)
 
     prerelease = is_prerelease(version, target)
 
@@ -161,11 +235,14 @@ def main() -> int:
         {
             "is_prerelease": "true" if prerelease else "false",
             "target_branch": target,
+            "current_version": current_version,
         }
     )
 
     # 2. Build and publish report
-    report_content = generate_report(target, version, tag, released, dry_run, prerelease, org, image_name)
+    report_content = generate_report(
+        target, current_version, version, tag, released, dry_run, prerelease, org, image_name
+    )
 
     print(report_content)
 
