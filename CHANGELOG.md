@@ -6,16 +6,16 @@
 
 ### Features
 
-- Change to noaaepic registry ([#9](https://github.com/benkozi/ufs-chem-container/pull/9),
-  [`20a5a9e`](https://github.com/benkozi/ufs-chem-container/commit/20a5a9e1159d9bdde6c7a79aba31d108b9555dfe))
+- Change to noaaepic registry ([#9](https://github.com/ufs-community/ufs-chem-container/pull/9),
+  [`20a5a9e`](https://github.com/ufs-community/ufs-chem-container/commit/20a5a9e1159d9bdde6c7a79aba31d108b9555dfe))
 
 
 ## v0.2.0-rc.1 (2026-09-24)
 
 ### Features
 
-- Add sandbox build support ([#6](https://github.com/benkozi/ufs-chem-container/pull/6),
-  [`073f465`](https://github.com/benkozi/ufs-chem-container/commit/073f465ae42bfa5681cc42c77518e6dcd7c202f8))
+- Add sandbox build support ([#6](https://github.com/ufs-community/ufs-chem-container/pull/6),
+  [`073f465`](https://github.com/ufs-community/ufs-chem-container/commit/073f465ae42bfa5681cc42c77518e6dcd7c202f8))
 
 
 ## v0.1.0 (2026-09-24)
@@ -25,13 +25,13 @@
 
 ### Bug Fixes
 
-- No skip message ([#4](https://github.com/benkozi/ufs-chem-container/pull/4),
-  [`9bc7a71`](https://github.com/benkozi/ufs-chem-container/commit/9bc7a71e62ce4d08f4c0a8e116bcb69b8b3bba6c))
+- No skip message ([#4](https://github.com/ufs-community/ufs-chem-container/pull/4),
+  [`9bc7a71`](https://github.com/ufs-community/ufs-chem-container/commit/9bc7a71e62ce4d08f4c0a8e116bcb69b8b3bba6c))
 
 
 ## v0.1.0-rc.1 (2026-09-22)
 
 ### Features
 
-- Initial implementation ([#1](https://github.com/benkozi/ufs-chem-container/pull/1),
-  [`088de66`](https://github.com/benkozi/ufs-chem-container/commit/088de66932c9877a1b2c7c5f268453ef50de2d0d))
+- Initial implementation ([#1](https://github.com/ufs-community/ufs-chem-container/pull/1),
+  [`088de66`](https://github.com/ufs-community/ufs-chem-container/commit/088de66932c9877a1b2c7c5f268453ef50de2d0d))

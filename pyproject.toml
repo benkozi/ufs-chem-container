@@ -5,6 +5,11 @@ description = "Container images for UFS Chemistry"
 readme = "README.md"
 requires-python = ">=3.10"
 
+[project.urls]
+Homepage = "https://github.com/ufs-community/ufs-chem-container"
+Repository = "https://github.com/ufs-community/ufs-chem-container"
+Issues = "https://github.com/ufs-community/ufs-chem-container/issues"
+
 [build-system]
 requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
