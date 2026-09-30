@@ -41,26 +41,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate secrets presence
+        id: check
         env:
           DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IS_SANDBOX: ${{ inputs.is_sandbox }}
         run: |
           MISSING=""
           [ -z "$DOCKER_ORG" ] && MISSING="${MISSING} DOCKER_ORG"
           [ -z "$DOCKER_USERNAME" ] && MISSING="${MISSING} DOCKER_USERNAME"
           [ -z "$DOCKERHUB_TOKEN" ] && MISSING="${MISSING} DOCKERHUB_TOKEN"
           if [ -n "$MISSING" ]; then
-            echo "::error::Missing required Docker repository secrets:${MISSING}"
-            exit 1
+            if [ "$IS_SANDBOX" = "true" ]; then
+              echo "::error::Sandbox builds require Docker repository secrets:${MISSING}."
+              echo "::error::Sandbox images cannot be published from fork pull requests."
+              exit 1
+            else
+              echo "Docker repository secrets not provided (${MISSING})."
+              echo "Skipping Docker Hub credential verification for local build."
+              echo "skip_verification=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
+          echo "skip_verification=false" >> "$GITHUB_OUTPUT"
           echo "All required Docker secrets are present."
       - name: Log in to Docker Hub
+        if: steps.check.outputs.skip_verification != 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Verify registry push authorization
+        if: steps.check.outputs.skip_verification != 'true'
         env:
           DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -182,8 +195,8 @@ jobs:
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
             ${{ steps.config.outputs.sandbox_cache }}
-            type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}-dev:latest
-            type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}:latest
+            type=registry,ref=${{ secrets.DOCKER_ORG || 'noaaepic' }}/${{ inputs.image_name }}-dev:latest
+            type=registry,ref=${{ secrets.DOCKER_ORG || 'noaaepic' }}/${{ inputs.image_name }}:latest
           cache-to: |-
             type=gha,scope=${{ inputs.target_name }},mode=max
             type=inline

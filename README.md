@@ -124,6 +124,20 @@ The GitHub Actions workflows require the following repository-level secrets when
   - `SEMVER_APP_ID`: GitHub App Client ID (or App ID) for automated semantic release. Requires branch ruleset bypass permissions (`bypass_actors`) for protected branches (`develop`, `main`).
   - `SEMVER_APP_PRIVATE_KEY`: GitHub App private key (`.pem`) for automated semantic release and branch protection bypass.
 
+### Fork Pull Requests & Security Context
+
+Pull requests originating from external forks run in GitHub's restricted security context where repository secrets are withheld:
+- **Local Container Build Verification**: The `build-test` job runs cleanly on fork PRs, building with Docker Buildx and verifying local registry push (`localhost:5000`) with public layer cache fallbacks. Docker Hub credential verification is gracefully skipped.
+- **Semantic Release Preview**: The preview workflow evaluates the PR title and generates projected release diffs using `github.token` fallback, gracefully skipping App token verification.
+- **Sandbox Builds**: Publishing sandbox test containers to Docker Hub requires write secrets and must be triggered from internal branches within `ufs-community/ufs-chem-container`.
+
+### Automated Secret & Permission Verification
+
+A dedicated verification workflow ([.github/workflows/verify-secrets.yml](.github/workflows/verify-secrets.yml)) runs on a daily cron schedule (`0 6 * * *` at 06:00 UTC) and can be triggered on demand via `workflow_dispatch`. It continuously verifies:
+1. Docker Hub login and registry push permissions for all target repositories (`ufschem-spack-base-ubuntu-gcc-13`, `ufschem-spack-base-ubuntu-gcc-13-dev`, and `ufschem-spack-base-ubuntu-gcc-13-sandbox`).
+2. GitHub App token acquisition, repository write permissions, Git ref operations, and branch ruleset bypass permissions on `develop` and `main`.
+
+
 ## Development & Pre-Commit
 
 This repository uses [pre-commit](https://pre-commit.com/) orchestrated through [uv](https://docs.astral.sh/uv/) for code hygiene, formatting, type checking, and conventional commit message validation.
