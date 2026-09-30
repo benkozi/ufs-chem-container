@@ -11,11 +11,6 @@ import sys
 logger = logging.getLogger(__name__)
 
 
-def str_to_bool(val: str | bool) -> bool:
-    """Convert string or boolean value to boolean."""
-    return val if isinstance(val, bool) else str(val).strip().lower() in ("true", "1", "yes")
-
-
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Evaluate release outputs and generate summary report.")
@@ -154,14 +149,16 @@ def generate_report(
     else:
         lines.append("**Mode**: Production Execution\n")
 
-    lines.append("| Parameter | Value |")
-    lines.append("|---|---|")
-    lines.append(f"| Target Branch | `{target}` |")
-    lines.append(f"| Current Version | `{current_version or 'None'}` |")
-    lines.append(f"| Next Version | `{version or 'None'}` |")
-    lines.append(f"| Git Tag | `{tag or 'None'}` |")
-    lines.append(f"| Will Release? | `{str(released).lower()}` |")
-    lines.append(f"| Is Prerelease? | `{str(prerelease).lower()}` |\n")
+    # ponytail: list comprehension builds Markdown summary table cleanly
+    table_rows = [
+        ("Target Branch", target),
+        ("Current Version", current_version or "None"),
+        ("Next Version", version or "None"),
+        ("Git Tag", tag or "None"),
+        ("Will Release?", str(released).lower()),
+        ("Is Prerelease?", str(prerelease).lower()),
+    ]
+    lines.extend(["| Parameter | Value |", "|---|---|"] + [f"| {p} | `{v}` |" for p, v in table_rows] + [""])
 
     if released:
         lines.append(f"#### 📦 Actions on Merge to `{target}`:")
@@ -203,8 +200,8 @@ def main() -> int:
     target = args.target.strip()
     version = args.version.strip()
     tag = args.tag.strip()
-    released = str_to_bool(args.released)
-    dry_run = str_to_bool(args.dry_run)
+    released = str(args.released).lower() in ("true", "1", "yes")
+    dry_run = str(args.dry_run).lower() in ("true", "1", "yes")
     org = args.org.strip()
     image_name = args.image_name.strip()
     current_version = args.current_version.strip() or determine_current_version(target, released, dry_run)
@@ -227,8 +224,7 @@ def main() -> int:
 
     print(report_content)
 
-    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if step_summary_path:
+    if step_summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(step_summary_path, "a", encoding="utf-8") as f:
             f.write(report_content)
 

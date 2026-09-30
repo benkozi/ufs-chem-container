@@ -10,35 +10,6 @@ import sys
 logger = logging.getLogger(__name__)
 
 
-def str_to_bool(val: str | bool) -> bool:
-    """Convert string or boolean value to boolean."""
-    return val if isinstance(val, bool) else str(val).strip().lower() in ("true", "1", "yes")
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Evaluate sandbox configuration for pull requests.")
-    parser.add_argument(
-        "--is-labeled",
-        default=os.environ.get("IS_LABELED_SANDBOX", "false"),
-        help="Whether PR has the 'sandbox-build' label (true/false).",
-    )
-    parser.add_argument(
-        "--body",
-        default=os.environ.get("PR_BODY", ""),
-        help="Pull request description body.",
-    )
-    return parser.parse_args()
-
-
-def write_github_output(outputs: dict[str, str]) -> None:
-    """Write key-value pairs to GITHUB_OUTPUT environment file."""
-    # ponytail: 3-line standard environment file export
-    if out := os.environ.get("GITHUB_OUTPUT"):
-        with open(out, "a", encoding="utf-8") as f:
-            f.writelines(f"{k}={v}\n" for k, v in outputs.items())
-
-
 def evaluate_sandbox(is_labeled: bool, body: str) -> tuple[bool, str]:
     """Evaluate whether sandbox build is requested and validate sandbox version.
 
@@ -72,27 +43,31 @@ def evaluate_sandbox(is_labeled: bool, body: str) -> tuple[bool, str]:
     return True, version
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Evaluate sandbox configuration for pull requests.")
+    parser.add_argument("--is-labeled", default=os.environ.get("IS_LABELED_SANDBOX", "false"))
+    parser.add_argument("--body", default=os.environ.get("PR_BODY", ""))
+    return parser.parse_args()
+
+
 def main() -> int:
     """Main execution entry point."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = parse_args()
-
-    is_labeled = str_to_bool(args.is_labeled)
-    body = args.body or ""
+    is_labeled = str(args.is_labeled).strip().lower() in ("true", "1", "yes")
 
     try:
-        is_sandbox, version = evaluate_sandbox(is_labeled, body)
+        is_sandbox, version = evaluate_sandbox(is_labeled, args.body or "")
     except ValueError as exc:
         for line in str(exc).splitlines():
             print(f"::error::{line}")
         return 1
 
-    write_github_output(
-        {
-            "is_sandbox": "true" if is_sandbox else "false",
-            "sandbox_version": version,
-        }
-    )
+    # ponytail: direct environment file write
+    if out := os.environ.get("GITHUB_OUTPUT"):
+        with open(out, "a", encoding="utf-8") as f:
+            f.write(f"is_sandbox={'true' if is_sandbox else 'false'}\nsandbox_version={version}\n")
     return 0
 
 

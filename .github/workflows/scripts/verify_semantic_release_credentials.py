@@ -36,15 +36,25 @@ def check_secrets(app_id: str, private_key: str, allow_missing: bool) -> int:
         return 1
 
     key = private_key.strip()
-    if key.endswith(".pem") or key.startswith(("/", "~")):
-        print("::error::SEMVER_APP_PRIVATE_KEY is a file path. Paste file contents instead.")
-        return 1
-    if "-----BEGIN" not in key or "-----END" not in key:
-        print("::error::SEMVER_APP_PRIVATE_KEY missing BEGIN/END RSA PRIVATE KEY markers.")
-        return 1
-    if (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")):
-        print("::error::SEMVER_APP_PRIVATE_KEY wrapped in quotes. Remove quotes in Secrets.")
-        return 1
+    # ponytail: table-driven validation loop replaces repetitive if-blocks
+    checks = [
+        (
+            key.endswith(".pem") or key.startswith(("/", "~")),
+            "SEMVER_APP_PRIVATE_KEY is a file path. Paste file contents instead.",
+        ),
+        (
+            "-----BEGIN" not in key or "-----END" not in key,
+            "SEMVER_APP_PRIVATE_KEY missing BEGIN/END RSA PRIVATE KEY markers.",
+        ),
+        (
+            (key.startswith('"') and key.endswith('"')) or (key.startswith("'") and key.endswith("'")),
+            "SEMVER_APP_PRIVATE_KEY wrapped in quotes. Remove quotes in Secrets.",
+        ),
+    ]
+    for failed, err in checks:
+        if failed:
+            print(f"::error::{err}")
+            return 1
 
     write_github_output({"skip_verification": "false"})
     logger.info("All required Semantic Release secrets are present and formatted properly.")

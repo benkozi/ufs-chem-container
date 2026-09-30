@@ -124,24 +124,15 @@ def check_single_repository_push(repo: str, username: str, token: str) -> bool:
 
 
 def check_push(repositories: list[str], username: str, token: str) -> int:
-    """Verify push permissions for a list of repositories.
-
-    Returns:
-        int: 0 if all succeed, 1 if any fail.
-    """
-    if not repositories:
+    """Verify push permissions for a list of repositories."""
+    # ponytail: list comprehension + all() replaces stateful flag loop
+    valid_repos = [r.strip() for r in repositories if r.strip()]
+    if not valid_repos:
         print("::error::No repositories specified for push access verification.")
         return 1
 
-    success = True
-    for repo in repositories:
-        trimmed = repo.strip()
-        if not trimmed:
-            continue
-        if not check_single_repository_push(trimmed, username, token):
-            success = False
-
-    if success:
+    results = [check_single_repository_push(r, username, token) for r in valid_repos]
+    if all(results):
         logger.info("All specified Docker Hub repositories verified successfully.")
         return 0
     return 1
