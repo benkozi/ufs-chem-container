@@ -38,6 +38,16 @@ repos:
         language: system
         types:
           - python
+        pass_filenames: false
+        always_run: true
+      - id: vulture
+        name: vulture
+        entry: uv run vulture
+        language: system
+        types:
+          - python
+        pass_filenames: false
+        always_run: true
       - id: yamlfix
         name: yamlfix
         entry: uv run yamlfix

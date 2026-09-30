@@ -23,6 +23,7 @@ dev = [
     "pre-commit>=4.0",
     "ruff>=0.9",
     "types-pyyaml>=6.0",
+    "vulture>=2.14",
     "yamlfix>=1.16",
     "yamllint>=1.35",
 ]
@@ -31,11 +32,16 @@ dev = [
 line-length = 120
 
 [tool.mypy]
+files = [".github/workflows/scripts"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 warn_redundant_casts = true
+
+[tool.vulture]
+paths = [".github/workflows/scripts"]
+min_confidence = 80
 
 [tool.yamlfix]
 explicit_start = false
