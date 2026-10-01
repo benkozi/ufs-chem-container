@@ -1,0 +1,41 @@
+name: Check Sandbox Configuration
+on:
+  workflow_call:
+    inputs:
+      is_labeled_sandbox:
+        description: Whether PR is labeled sandbox-build
+        required: false
+        type: boolean
+        default: false
+      pr_body:
+        description: Pull request description body
+        required: false
+        type: string
+        default: ''
+    outputs:
+      is_sandbox:
+        description: Whether sandbox build is active
+        value: ${{ jobs.check.outputs.is_sandbox }}
+      sandbox_version:
+        description: Extracted sandbox version tag
+        value: ${{ jobs.check.outputs.sandbox_version }}
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    name: Evaluate Sandbox
+    runs-on: ubuntu-latest
+    outputs:
+      is_sandbox: ${{ steps.evaluate.outputs.is_sandbox }}
+      sandbox_version: ${{ steps.evaluate.outputs.sandbox_version }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+      - name: Evaluate sandbox requirements
+        id: evaluate
+        env:
+          IS_LABELED_SANDBOX: ${{ inputs.is_labeled_sandbox }}
+          PR_BODY: ${{ inputs.pr_body }}
+        run: |-
+          python3 .github/workflows/scripts/check_sandbox_config.py

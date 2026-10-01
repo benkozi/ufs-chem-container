@@ -24,81 +24,55 @@ on:
         description: The image name for tagging and registry fallback
         required: true
         type: string
+      is_sandbox:
+        description: Whether to build and publish a sandbox image
+        required: false
+        type: boolean
+        default: false
+      sandbox_version:
+        description: Version tag for sandbox build
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
 jobs:
   verify-credentials:
     name: Verify Docker Credentials
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
       - name: Validate secrets presence
+        id: check
         env:
           DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          MISSING=""
-          [ -z "$DOCKER_ORG" ] && MISSING="${MISSING} DOCKER_ORG"
-          [ -z "$DOCKER_USERNAME" ] && MISSING="${MISSING} DOCKER_USERNAME"
-          [ -z "$DOCKERHUB_TOKEN" ] && MISSING="${MISSING} DOCKERHUB_TOKEN"
-          if [ -n "$MISSING" ]; then
-            echo "::error::Missing required Docker repository secrets:${MISSING}"
-            exit 1
-          fi
-          echo "All required Docker secrets are present."
+          python3 .github/workflows/scripts/verify_docker_credentials.py check-secrets \
+            ${{ inputs.is_sandbox == false && '--allow-missing' || '' }}
       - name: Log in to Docker Hub
+        if: steps.check.outputs.skip_verification != 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Verify registry push authorization
+        if: steps.check.outputs.skip_verification != 'true'
         env:
-          DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
           IMAGE_NAME: ${{ inputs.image_name }}
+          IS_SANDBOX: ${{ inputs.is_sandbox }}
         run: |
-          check_push_access() {
-            local repo="$1"
-            echo "Checking push permissions for repository: ${repo}..."
-            local token_resp
-            token_resp=$(curl -s -u "${DOCKER_USERNAME}:${DOCKERHUB_TOKEN}" \
-              "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:push,pull")
-            local token
-            token=$(echo "$token_resp" | jq -r '.token // .access_token // empty')
-            if [ -z "$token" ]; then
-              echo "::error::Failed to obtain Docker auth token for ${repo}: ${token_resp}"
-              return 1
-            fi
-            local upload_resp http_code
-            upload_resp=$(curl -s -i -X POST "https://registry-1.docker.io/v2/${repo}/blobs/uploads/" \
-              -H "Authorization: Bearer ${token}")
-            http_code=$(echo "$upload_resp" | grep -i "^HTTP/" | tail -n1 | awk '{print $2}')
-            if [ "$http_code" -eq 202 ]; then
-              echo "Push access successfully verified for ${repo} (HTTP 202 Accepted)."
-              local upload_url
-              upload_url=$(echo "$upload_resp" | grep -i "^location:" | awk '{print $2}' | tr -d '\r')
-              if [ -n "$upload_url" ]; then
-                case "$upload_url" in
-                  http*)
-                    del_url="$upload_url"
-                    ;;
-                  *)
-                    del_url="https://registry-1.docker.io${upload_url}"
-                    ;;
-                esac
-                curl -s -X DELETE "$del_url" \
-                  -H "Authorization: Bearer ${token}" >/dev/null 2>&1 || true
-              fi
-              return 0
-            else
-              echo "::error::Registry push check failed for ${repo} (HTTP ${http_code}):"
-              echo "$upload_resp"
-              return 1
-            fi
-          }
-          echo "Verifying push access for release repositories..."
-          check_push_access "${DOCKER_ORG}/${IMAGE_NAME}"
-          check_push_access "${DOCKER_ORG}/${IMAGE_NAME}-dev"
+          if [ "$IS_SANDBOX" = "true" ]; then
+            REPOS="${DOCKER_ORG}/${IMAGE_NAME}-sandbox"
+          else
+            REPOS="${DOCKER_ORG}/${IMAGE_NAME} ${DOCKER_ORG}/${IMAGE_NAME}-dev"
+          fi
+          python3 .github/workflows/scripts/verify_docker_credentials.py check-push \
+            --repositories $REPOS
   build-test:
     name: Build and Test Image
     needs:
@@ -114,22 +88,60 @@ jobs:
         uses: docker/setup-buildx-action@v4
         with:
           driver-opts: network=host
+      - name: Configure build destination and tags
+        id: config
+        env:
+          IS_SANDBOX: ${{ inputs.is_sandbox }}
+          DOCKER_ORG: ${{ secrets.DOCKER_ORG }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          SANDBOX_VERSION: ${{ inputs.sandbox_version }}
+        run: |
+          if [ "$IS_SANDBOX" = "true" ]; then
+            REPO="${DOCKER_ORG}/${IMAGE_NAME}-sandbox"
+            TAGS="${REPO}:${SANDBOX_VERSION}"
+            SANDBOX_CACHE="type=registry,ref=${REPO}:${SANDBOX_VERSION}"
+            {
+              echo "tags<<EOF"
+              echo "$TAGS"
+              echo "EOF"
+              echo "sandbox_cache<<EOF"
+              echo "$SANDBOX_CACHE"
+              echo "EOF"
+              echo "push_to_hub=true"
+            } >> "$GITHUB_OUTPUT"
+            echo "Configured build to publish sandbox image to Docker Hub repository: ${REPO}"
+          else
+            {
+              echo "tags=localhost:5000/${IMAGE_NAME}:latest"
+              echo "sandbox_cache="
+              echo "push_to_hub=false"
+            } >> "$GITHUB_OUTPUT"
+            echo "Configured build for local verification registry."
+          fi
       - name: Start local registry
+        if: steps.config.outputs.push_to_hub != 'true'
         run: |
           docker run -d -p 5000:5000 --name registry registry:2
+      - name: Log in to Docker Hub
+        if: steps.config.outputs.push_to_hub == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build image
         uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           push: true
-          tags: localhost:5000/${{ inputs.image_name }}:latest
+          tags: ${{ steps.config.outputs.tags }}
           platforms: linux/amd64
           build-args: ${{ inputs.build_args }}
           cache-from: |
             type=gha,scope=${{ inputs.target_name }}
-            type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}-dev:latest
-            type=registry,ref=${{ secrets.DOCKER_ORG }}/${{ inputs.image_name }}:latest
+            ${{ steps.config.outputs.sandbox_cache }}
+            type=registry,ref=${{ secrets.DOCKER_ORG || 'noaaepic' }}/${{ inputs.image_name }}-dev:latest
+            type=registry,ref=${{ secrets.DOCKER_ORG || 'noaaepic' }}/${{ inputs.image_name }}:latest
           cache-to: |-
             type=gha,scope=${{ inputs.target_name }},mode=max
             type=inline

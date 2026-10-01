@@ -4,60 +4,90 @@ Base container recipes and automated build infrastructure for UFS Chemistry (UFS
 
 ## Overview & Purpose
 
-`ufs-chem-container` provides the authoritative, decoupled base environment container images used across the UFS Chemistry ecosystem, including [CATChem](https://github.com/ufs-community/CATChem). Container image recipes and build workflows are extracted and decoupled from individual modeling repositories to centralize base environment maintenance, reduce redundant builds, and ensure cross-platform reproducibility.
+`ufs-chem-container` provides the authoritative, decoupled base environment container images used across the Unified Forecast System (UFS) Chemistry ecosystem. Container recipes and automated build workflows are maintained centrally to ensure cross-platform reproducibility, streamline dependency management, and eliminate redundant Spack build pipelines across downstream atmospheric and chemistry modeling workflows.
 
-## Drop-in Compatibility with CATChem
+## Supported Container Images & Dockerfiles
 
-The container images built by this repository provide an exact, 100% drop-in replacement for CATChem's legacy Spack base image:
-- **Base OS**: Ubuntu 24.04 LTS
-- **System Dependencies**: Full compiler and library suite (`build-essential`, `gfortran`, `cmake`, `libopenmpi-dev`, `libnetcdf-dev`, `libnetcdff-dev`, `liblapack-dev`, `libopenblas-dev`, `cython3`, etc.)
-- **Rust Toolchain**: Stable Rust installed via rustup
-- **Spack-Stack**: Cloned from [JCSDA/spack-stack](https://github.com/JCSDA/spack-stack) at commit `37c009d` (v2.1.1)
-- **Spack Environment (`ufschem`)**: Concretized and installed with `esmf` (against system OpenMPI), `yaml-cpp`, `parallelio+pnetcdf`, and `py-pip`
-- **Default Shell**: Automatically sources `/opt/ufschem/spack-stack/setup.sh` and activates the `ufschem` Spack environment
+- [`docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13`](docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13): Ubuntu 24.04 base container environment built with the GCC 13 toolchain, Rust, and a pre-configured spack-stack environment for UFS Chemistry modeling applications.
+
 
 ## Image Variants & Naming Conventions
 
-Images are hosted on Docker Hub at [bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev](https://hub.docker.com/repository/docker/bkrlps/ufschem-spack-base-ubuntu-gcc-13-dev/general). The organization namespace is configured via repository secret `DOCKER_ORG`:
+Images are hosted on Docker Hub under the [noaaepic](https://hub.docker.com/u/noaaepic) organization at [noaaepic/ufschem-spack-base-ubuntu-gcc-13-dev](https://hub.docker.com/repository/docker/noaaepic/ufschem-spack-base-ubuntu-gcc-13-dev/general). The organization namespace is configured via repository secret `DOCKER_ORG`:
 
-| Branch | Image Name | Tags | Purpose |
+| Branch / Context | Image Name | Tags | Purpose |
 |---|---|---|---|
-| `main` | `ufschem-spack-base-ubuntu-gcc-13` | `<version>` (e.g. `0.1.0`), `latest` | Stable production base image |
-| `develop` | `ufschem-spack-base-ubuntu-gcc-13-dev` | `<version>-rc.X` (e.g. `0.1.0-rc.1`) | Prerelease release candidate |
+| `main` | `ufschem-spack-base-ubuntu-gcc-13` | `<version>` (e.g. `0.2.0`), `latest` | Stable production base image |
+| `develop` | `ufschem-spack-base-ubuntu-gcc-13-dev` | `<version>-rc.X` (e.g. `0.2.0-rc.2`), `latest` | Prerelease release candidate |
+| PR with `sandbox-build` | `ufschem-spack-base-ubuntu-gcc-13-sandbox` | `<sandbox-version>` (e.g. `7.7.7-rc.1`) | Temporary sandbox image for external application testing prior to merge |
 
-> **Note**: Prerelease builds on `develop` never update the `:latest` tag on Docker Hub.
+> **Note**: Prerelease builds on `develop` update the `:latest` tag on the `-dev` repository (`<image>-dev:latest`). Production builds on `main` update `:latest` on the production repository. Sandbox builds on PRs omit the `:latest` tag to prevent collisions across concurrent pull requests.
 
-## Building Locally
+### Pulling Pre-built Images from Docker Hub
 
-To build the Spack base container image locally using Docker Buildx:
+To pull pre-built images for downstream modeling or integration testing:
 
-```bash
-docker buildx build -f docker/Dockerfile.ufschem-spack-base-ubuntu-gcc-13 -t ufschem-spack-base:local .
-```
+- **Production release**:
+  ```bash
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13:latest
+  # or specific version:
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13:0.2.0
+  ```
 
-To run the container interactively and verify the Spack environment:
+- **Prerelease candidate**:
+  ```bash
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13-dev:0.2.0-rc.2
+  ```
 
-```bash
-docker run -it --rm ufschem-spack-base:local bash
-```
+- **Sandbox test build**:
+  ```bash
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13-sandbox:7.7.7-rc.1
+  ```
 
-Inside the container:
+## Sandbox Builds for Testing and Development
 
-```bash
-spack env status
-spack find
-```
+Recipe changes may need to be tested by an external application (such as downstream UFS modeling workflows or integration test suites) before merging into `develop`. Pull requests can trigger temporary sandbox builds published to Docker Hub:
+
+### Triggering a Sandbox Build
+1. **Apply Label**: Add the `sandbox-build` label to the Pull Request.
+2. **Specify Version Tag**: Include `sandbox-version=<version>` on its own line in the Pull Request description (body). For example:
+   ```markdown
+   sandbox-version=7.7.7-rc.1
+   ```
+
+### Behavior & Constraints
+- **Validation**: If a PR is labeled with `sandbox-build` but does not include a valid `sandbox-version=` on its own line in the PR description, the CI workflow will raise an error and abort immediately.
+- **Repository Destination & Caching**: The image is published strictly to `${DOCKER_ORG}/<image-name>-sandbox:<sandbox-version>`. Sandbox builds do not push a `:latest` tag to eliminate collisions across concurrent pull requests; subsequent builds on the same PR reuse layer cache directly from `<image-name>-sandbox:<sandbox-version>`.
+- **Branch Isolation**: Sandbox images are **never** built or pushed on `develop` or `main` branches. They exist solely for pre-merge testing during PR review.
+- **Pulling the Sandbox Image**: External applications can pull and execute the sandbox image using:
+  ```bash
+  docker pull noaaepic/ufschem-spack-base-ubuntu-gcc-13-sandbox:7.7.7-rc.1
+  ```
 
 ## Repository Configuration & Secrets
 
 The GitHub Actions workflows require the following repository-level secrets when publishing images (all Docker configuration is managed via repository secrets with no defaults):
 
 - **Repository Secrets**:
-  - `DOCKER_ORG`: Docker Hub organization / namespace.
-  - `DOCKER_USERNAME`: Docker Hub account username.
-  - `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions.
-  - `SEMVER_APP_ID`: GitHub App Client ID (or App ID) for automated semantic release.
+  - `DOCKER_ORG`: Docker Hub organization / namespace (`noaaepic`).
+  - `DOCKER_USERNAME`: Docker Hub account username with write permissions to `noaaepic`.
+  - `DOCKERHUB_TOKEN`: Docker Hub Personal Access Token (PAT) with read/write permissions for `noaaepic`.
+  - `SEMVER_APP_ID`: GitHub App Client ID (or App ID) for automated semantic release. Requires branch ruleset bypass permissions (`bypass_actors`) for protected branches (`develop`, `main`).
   - `SEMVER_APP_PRIVATE_KEY`: GitHub App private key (`.pem`) for automated semantic release and branch protection bypass.
+
+### Fork Pull Requests & Security Context
+
+Pull requests originating from external forks run in GitHub's restricted security context where repository secrets are withheld:
+- **Local Container Build Verification**: The `build-test` job runs cleanly on fork PRs, building with Docker Buildx and verifying local registry push (`localhost:5000`) with public layer cache fallbacks. Docker Hub credential verification is gracefully skipped.
+- **Semantic Release Preview**: The preview workflow evaluates the PR title and generates projected release diffs using `github.token` fallback, gracefully skipping App token verification.
+- **Sandbox Builds**: Publishing sandbox test containers to Docker Hub requires write secrets and must be triggered from internal branches within `ufs-community/ufs-chem-container`.
+
+### Automated Secret & Permission Verification
+
+A dedicated verification workflow ([.github/workflows/verify-secrets.yml](.github/workflows/verify-secrets.yml)) runs on a daily cron schedule (`0 6 * * *` at 06:00 UTC) and can be triggered on demand via `workflow_dispatch`. It continuously verifies:
+1. Docker Hub login and registry push permissions for all target repositories (`ufschem-spack-base-ubuntu-gcc-13`, `ufschem-spack-base-ubuntu-gcc-13-dev`, and `ufschem-spack-base-ubuntu-gcc-13-sandbox`).
+2. GitHub App token acquisition, repository write permissions, Git ref operations, and branch ruleset bypass permissions on `develop` and `main`.
+
 
 ## Development & Pre-Commit
 
@@ -76,13 +106,8 @@ uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 uv run pre-commit run --all-files
 ```
 
-The pre-commit hooks include:
-- `conventional-pre-commit`: Enforces Conventional Commit grammar on commit messages.
-- `trailing-whitespace` & `end-of-file-fixer`: General file hygiene.
-- `check-toml`: Syntax validation for `pyproject.toml`.
-- `ruff` (linter & formatter): Python code quality.
-- `mypy`: Static type analysis.
-- `yamlfix` & `yamllint`: YAML style and syntax checking.
+See [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for the list of configured checks.
+
 
 ## Release Process & Conventional Commits
 
