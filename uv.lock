@@ -836,7 +836,7 @@ wheels = [
 
 [[package]]
 name = "ufs-chem-container"
-version = "0.2.0rc3"
+version = "0.2.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
