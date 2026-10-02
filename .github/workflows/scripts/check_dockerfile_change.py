@@ -4,9 +4,9 @@
 import argparse
 import logging
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +24,7 @@ def write_step_summary(params: dict[str, str]) -> None:
     if summary_file := os.environ.get("GITHUB_STEP_SUMMARY"):
         rows = [f"| {k} | {v} |" for k, v in params.items()]
         table = (
-            "### Container Build Optimization Status\n\n"
-            "| Parameter | Details |\n"
-            "|---|---|\n" + "\n".join(rows) + "\n\n"
+            "### Container Build Optimization Status\n\n| Parameter | Details |\n|---|---|\n" + "\n".join(rows) + "\n\n"
         )
         with open(summary_file, "a", encoding="utf-8") as f:
             f.write(table)
@@ -61,7 +59,7 @@ def check_pr_diff(dockerfile: str, target_branch: str) -> bool:
     branches_output = run_git_command(["branch", "-a"])
     branches = [b.strip().lstrip("* ") for b in branches_output.splitlines() if b.strip()]
 
-    if target_branch.startswith("origin/") or target_branch.startswith("ufs-community/"):
+    if target_branch.startswith(("origin/", "ufs-community/")):
         target_ref = target_branch
     elif f"origin/{target_branch}" in branches or f"remotes/origin/{target_branch}" in branches:
         target_ref = f"origin/{target_branch}"
