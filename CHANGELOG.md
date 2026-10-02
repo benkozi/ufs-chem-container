@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.2.0 (2026-10-01)
+
+### Continuous Integration
+
+- Tune psr report for merge commits
+  ([#13](https://github.com/ufs-community/ufs-chem-container/pull/13),
+  [`526ab93`](https://github.com/ufs-community/ufs-chem-container/commit/526ab931b20bc91bbd77a4ef77eef6fcbb00ec98))
+
+
 ## v0.2.0-rc.3 (2026-09-30)
 
 ### Features
