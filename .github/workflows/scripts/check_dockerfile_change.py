@@ -202,21 +202,27 @@ def main() -> int:
         write_github_output(outputs)
 
         # Export summary to GITHUB_STEP_SUMMARY
-        summary_params = {
+        summary_params: dict[str, str] = {
             "Dockerfile": f"`{norm_dockerfile}`",
             "Event Context": f"`{args.event_name}`",
-            "Dockerfile Changed": "✅ Yes" if dockerfile_changed else "❌ No",
-            "Preceding Release Tag": f"`{prev_tag}`" if prev_tag else "*(none)*",
-            "Optimization Action": (
-                "🔨 **Build image**"
-                if action == "build"
-                else (
-                    f"🏷️ **Re-tag existing manifest** (`{source_image}` ➔ `{target_tags}`)"
-                    if action == "retag"
-                    else "⚡ **Short-circuited (Build skipped)**"
-                )
-            ),
         }
+        if args.event_name == "pull_request":
+            summary_params["Target Branch"] = f"`{args.target_branch or 'develop'}`"
+        elif args.event_name in ("push", "release"):
+            summary_params["Preceding Release Tag"] = f"`{prev_tag}`" if prev_tag else "*(none)*"
+        elif args.target_branch:
+            summary_params["Target Branch"] = f"`{args.target_branch}`"
+
+        summary_params["Dockerfile Changed"] = "✅ Yes" if dockerfile_changed else "❌ No"
+        summary_params["Optimization Action"] = (
+            "🔨 **Build image**"
+            if action == "build"
+            else (
+                f"🏷️ **Re-tag existing manifest** (`{source_image}` ➔ `{target_tags}`)"
+                if action == "retag"
+                else "⚡ **Short-circuited (Build skipped)**"
+            )
+        )
         write_step_summary(summary_params)
 
         return 0
