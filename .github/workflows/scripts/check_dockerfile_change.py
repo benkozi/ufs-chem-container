@@ -14,20 +14,18 @@ logger = logging.getLogger(__name__)
 def write_github_output(outputs: dict[str, str]) -> None:
     """Write key-value pairs to GITHUB_OUTPUT environment file."""
     # ponytail: 3-line standard environment file export
-    if out := os.environ.get("GITHUB_OUTPUT"):
-        with open(out, "a", encoding="utf-8") as f:
-            f.writelines(f"{k}={v}\n" for k, v in outputs.items())
+    out = os.environ["GITHUB_OUTPUT"]
+    with open(out, "a", encoding="utf-8") as f:
+        f.writelines(f"{k}={v}\n" for k, v in outputs.items())
 
 
 def write_step_summary(params: dict[str, str]) -> None:
     """Append Markdown optimization report to GITHUB_STEP_SUMMARY."""
-    if summary_file := os.environ.get("GITHUB_STEP_SUMMARY"):
-        rows = [f"| {k} | {v} |" for k, v in params.items()]
-        table = (
-            "### Container Build Optimization Status\n\n| Parameter | Details |\n|---|---|\n" + "\n".join(rows) + "\n\n"
-        )
-        with open(summary_file, "a", encoding="utf-8") as f:
-            f.write(table)
+    summary_file = os.environ["GITHUB_STEP_SUMMARY"]
+    rows = [f"| {k} | {v} |" for k, v in params.items()]
+    table = "### Container Build Optimization Status\n\n| Parameter | Details |\n|---|---|\n" + "\n".join(rows) + "\n\n"
+    with open(summary_file, "a", encoding="utf-8") as f:
+        f.write(table)
 
 
 def run_git_command(args: list[str]) -> str:
@@ -131,105 +129,110 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def determine_optimization(args: argparse.Namespace) -> tuple[dict[str, str], dict[str, str]]:
+    """Evaluate diffs and determine CI outputs and step summary parameters."""
+    norm_dockerfile = normalize_path(args.dockerfile)
+    logger.info("Evaluating Dockerfile '%s' under event '%s'", norm_dockerfile, args.event_name)
+
+    dockerfile_changed = True
+    prev_tag = ""
+
+    if args.force_build:
+        logger.info("Force build requested via flag.")
+        dockerfile_changed = True
+    elif args.event_name == "pull_request":
+        target = args.target_branch or "develop"
+        dockerfile_changed = check_pr_diff(norm_dockerfile, target)
+    elif args.event_name in ("push", "release"):
+        dockerfile_changed, prev_tag = check_release_diff(norm_dockerfile, args.release_version)
+    elif args.event_name == "workflow_dispatch":
+        if args.target_branch:
+            dockerfile_changed = check_pr_diff(norm_dockerfile, args.target_branch)
+        else:
+            dockerfile_changed = True
+
+    # Determine action and target outputs
+    action = "build"
+    build_needed = True
+    source_image = ""
+    target_tags = ""
+
+    if not dockerfile_changed:
+        if args.event_name == "pull_request":
+            if args.is_sandbox:
+                action = "retag"
+                build_needed = False
+                source_image = f"{args.org}/{args.image_name}-dev:latest"
+                target_tags = f"{args.org}/{args.image_name}-sandbox:{args.sandbox_version}"
+            else:
+                action = "skip"
+                build_needed = False
+        elif args.event_name in ("push", "release"):
+            action = "retag"
+            build_needed = False
+            # For releases, promote dev:latest or re-tag existing image
+            source_image = (
+                f"{args.org}/{args.image_name}:latest"
+                if args.is_prerelease
+                else f"{args.org}/{args.image_name}-dev:latest"
+            )
+            target_tags = f"{args.org}/{args.image_name}:{args.release_version} {args.org}/{args.image_name}:latest"
+
+    logger.info(
+        "Optimization outcome: changed=%s, build_needed=%s, action=%s",
+        dockerfile_changed,
+        build_needed,
+        action,
+    )
+
+    outputs = {
+        "dockerfile_changed": "true" if dockerfile_changed else "false",
+        "build_needed": "true" if build_needed else "false",
+        "action": action,
+        "source_image": source_image,
+        "target_tags": target_tags,
+    }
+
+    summary_params: dict[str, str] = {
+        "Dockerfile": f"`{norm_dockerfile}`",
+        "Event Context": f"`{args.event_name}`",
+    }
+    if args.event_name == "pull_request":
+        summary_params["Target Branch"] = f"`{args.target_branch or 'develop'}`"
+    elif args.event_name in ("push", "release"):
+        summary_params["Preceding Release Tag"] = f"`{prev_tag}`" if prev_tag else "*(none)*"
+    elif args.target_branch:
+        summary_params["Target Branch"] = f"`{args.target_branch}`"
+
+    summary_params["Dockerfile Changed"] = "✅ Yes" if dockerfile_changed else "❌ No"
+    summary_params["Optimization Action"] = (
+        "🔨 **Build image**"
+        if action == "build"
+        else (
+            f"🏷️ **Re-tag existing manifest** (`{source_image}` ➔ `{target_tags}`)"
+            if action == "retag"
+            else "⚡ **Short-circuited (Build skipped)**"
+        )
+    )
+
+    return outputs, summary_params
+
+
 def main() -> int:
     """Main execution entry point."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = parse_args()
 
     try:
-        norm_dockerfile = normalize_path(args.dockerfile)
-        logger.info("Evaluating Dockerfile '%s' under event '%s'", norm_dockerfile, args.event_name)
-
-        dockerfile_changed = True
-        prev_tag = ""
-
-        if args.force_build:
-            logger.info("Force build requested via flag.")
-            dockerfile_changed = True
-        elif args.event_name == "pull_request":
-            target = args.target_branch or "develop"
-            dockerfile_changed = check_pr_diff(norm_dockerfile, target)
-        elif args.event_name in ("push", "release"):
-            dockerfile_changed, prev_tag = check_release_diff(norm_dockerfile, args.release_version)
-        elif args.event_name == "workflow_dispatch":
-            if args.target_branch:
-                dockerfile_changed = check_pr_diff(norm_dockerfile, args.target_branch)
-            else:
-                dockerfile_changed = True
-
-        # Determine action and target outputs
-        action = "build"
-        build_needed = True
-        source_image = ""
-        target_tags = ""
-
-        if not dockerfile_changed:
-            if args.event_name == "pull_request":
-                if args.is_sandbox:
-                    action = "retag"
-                    build_needed = False
-                    source_image = f"{args.org}/{args.image_name}-dev:latest"
-                    target_tags = f"{args.org}/{args.image_name}-sandbox:{args.sandbox_version}"
-                else:
-                    action = "skip"
-                    build_needed = False
-            elif args.event_name in ("push", "release"):
-                action = "retag"
-                build_needed = False
-                # For releases, promote dev:latest or re-tag existing image
-                source_image = (
-                    f"{args.org}/{args.image_name}:latest"
-                    if args.is_prerelease
-                    else f"{args.org}/{args.image_name}-dev:latest"
-                )
-                target_tags = f"{args.org}/{args.image_name}:{args.release_version} {args.org}/{args.image_name}:latest"
-
-        logger.info(
-            "Optimization outcome: changed=%s, build_needed=%s, action=%s",
-            dockerfile_changed,
-            build_needed,
-            action,
-        )
-
-        # Export outputs to GITHUB_OUTPUT
-        outputs = {
-            "dockerfile_changed": "true" if dockerfile_changed else "false",
-            "build_needed": "true" if build_needed else "false",
-            "action": action,
-            "source_image": source_image,
-            "target_tags": target_tags,
-        }
-        write_github_output(outputs)
-
-        # Export summary to GITHUB_STEP_SUMMARY
-        summary_params: dict[str, str] = {
-            "Dockerfile": f"`{norm_dockerfile}`",
-            "Event Context": f"`{args.event_name}`",
-        }
-        if args.event_name == "pull_request":
-            summary_params["Target Branch"] = f"`{args.target_branch or 'develop'}`"
-        elif args.event_name in ("push", "release"):
-            summary_params["Preceding Release Tag"] = f"`{prev_tag}`" if prev_tag else "*(none)*"
-        elif args.target_branch:
-            summary_params["Target Branch"] = f"`{args.target_branch}`"
-
-        summary_params["Dockerfile Changed"] = "✅ Yes" if dockerfile_changed else "❌ No"
-        summary_params["Optimization Action"] = (
-            "🔨 **Build image**"
-            if action == "build"
-            else (
-                f"🏷️ **Re-tag existing manifest** (`{source_image}` ➔ `{target_tags}`)"
-                if action == "retag"
-                else "⚡ **Short-circuited (Build skipped)**"
-            )
-        )
-        write_step_summary(summary_params)
-
-        return 0
+        outputs, summary = determine_optimization(args)
     except subprocess.CalledProcessError as exc:
         stderr_msg = exc.stderr.strip() if exc.stderr else (exc.stdout.strip() if exc.stdout else "")
         print(f"::error::Git command 'git {' '.join(exc.cmd[1:])}' failed (exit {exc.returncode}): {stderr_msg}")
         return exc.returncode
+
+    write_github_output(outputs)
+    write_step_summary(summary)
+    return 0
 
 
 if __name__ == "__main__":

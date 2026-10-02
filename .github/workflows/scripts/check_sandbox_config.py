@@ -65,9 +65,9 @@ def main() -> int:
         return 1
 
     # ponytail: direct environment file write
-    if out := os.environ.get("GITHUB_OUTPUT"):
-        with open(out, "a", encoding="utf-8") as f:
-            f.write(f"is_sandbox={'true' if is_sandbox else 'false'}\nsandbox_version={version}\n")
+    out = os.environ["GITHUB_OUTPUT"]
+    with open(out, "a", encoding="utf-8") as f:
+        f.write(f"is_sandbox={'true' if is_sandbox else 'false'}\nsandbox_version={version}\n")
     return 0
 
 
