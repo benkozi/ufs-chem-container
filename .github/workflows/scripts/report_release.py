@@ -113,9 +113,9 @@ def is_prerelease(version: str, target: str) -> bool:
 def write_github_output(outputs: dict[str, str]) -> None:
     """Write key-value pairs to GITHUB_OUTPUT environment file."""
     # ponytail: 3-line standard environment file export
-    if out := os.environ.get("GITHUB_OUTPUT"):
-        with open(out, "a", encoding="utf-8") as f:
-            f.writelines(f"{k}={v}\n" for k, v in outputs.items())
+    out = os.environ["GITHUB_OUTPUT"]
+    with open(out, "a", encoding="utf-8") as f:
+        f.writelines(f"{k}={v}\n" for k, v in outputs.items())
 
 
 def get_git_diff() -> str:
@@ -382,9 +382,9 @@ def main() -> int:
 
     print(report_content)
 
-    if step_summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(step_summary_path, "a", encoding="utf-8") as f:
-            f.write(report_content)
+    step_summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+    with open(step_summary_path, "a", encoding="utf-8") as f:
+        f.write(report_content)
 
     return 0
 
