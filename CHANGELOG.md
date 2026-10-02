@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v0.3.0-rc.1 (2026-10-02)
+
+### Features
+
+- **optimize**: Build images only on change; skip verify on forks
+  ([#18](https://github.com/ufs-community/ufs-chem-container/pull/18),
+  [`1d372a6`](https://github.com/ufs-community/ufs-chem-container/commit/1d372a6e3089654cef213f0d71e8b5c6319b4fac))
+
+
 ## v0.2.0 (2026-10-01)
 
 ### Continuous Integration
