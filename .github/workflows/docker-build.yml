@@ -38,6 +38,7 @@ on:
 jobs:
   verify-credentials:
     name: Verify Docker Credentials
+    if: github.repository == 'ufs-community/ufs-chem-container'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
@@ -77,6 +78,9 @@ jobs:
     name: Build and Test Image
     needs:
       - verify-credentials
+    if: >-
+      !cancelled() &&
+      (needs.verify-credentials.result == 'success' || needs.verify-credentials.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
@@ -84,11 +88,64 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+      - name: Check if Dockerfile changed
+        id: check-change
+        run: |
+          python3 .github/workflows/scripts/check_dockerfile_change.py \
+            --dockerfile "${{ inputs.dockerfile }}" \
+            --event-name "${{ github.event_name }}" \
+            --target-branch "${{ github.base_ref }}" \
+            ${{ inputs.is_sandbox && '--is-sandbox' || '' }} \
+            --sandbox-version "${{ inputs.sandbox_version }}" \
+            --image-name "${{ inputs.image_name }}" \
+            --org "${{ secrets.DOCKER_ORG || 'noaaepic' }}"
+      - name: Log in to Docker Hub for sandbox re-tag
+        if: steps.check-change.outputs.action == 'retag'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Set up Docker Buildx for re-tag
+        if: steps.check-change.outputs.action == 'retag'
+        uses: docker/setup-buildx-action@v4
+      - name: Fast-track sandbox re-tag
+        if: steps.check-change.outputs.action == 'retag'
+        id: retag-sandbox
+        continue-on-error: true
+        env:
+          SOURCE_IMAGE: ${{ steps.check-change.outputs.source_image }}
+          TARGET_TAGS: ${{ steps.check-change.outputs.target_tags }}
+        run: |
+          TAG_ARGS=()
+          for t in $TARGET_TAGS; do
+            TAG_ARGS+=(--tag "$t")
+          done
+          echo "Re-tagging $SOURCE_IMAGE to ${TAG_ARGS[*]}"
+          if docker buildx imagetools create "${TAG_ARGS[@]}" "$SOURCE_IMAGE"; then
+            echo "Successfully created sandbox tag directly on registry."
+            echo "retag_success=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Manifest re-tagging failed. Falling back to container compilation."
+            echo "retag_success=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Evaluate if compilation is needed
+        id: eval-build
+        run: |
+          BUILD_NEEDED="${{ steps.check-change.outputs.build_needed }}"
+          RETAG_SUCCESS="${{ steps.retag-sandbox.outputs.retag_success }}"
+          ACTION="${{ steps.check-change.outputs.action }}"
+          if [ "$BUILD_NEEDED" = "true" ] || { [ "$ACTION" = "retag" ] && [ "$RETAG_SUCCESS" != "true" ]; }; then
+            echo "run_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_build=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Set up Docker Buildx
+        if: steps.eval-build.outputs.run_build == 'true'
         uses: docker/setup-buildx-action@v4
         with:
           driver-opts: network=host
       - name: Configure build destination and tags
+        if: steps.eval-build.outputs.run_build == 'true'
         id: config
         env:
           IS_SANDBOX: ${{ inputs.is_sandbox }}
@@ -119,16 +176,17 @@ jobs:
             echo "Configured build for local verification registry."
           fi
       - name: Start local registry
-        if: steps.config.outputs.push_to_hub != 'true'
+        if: steps.eval-build.outputs.run_build == 'true' && steps.config.outputs.push_to_hub != 'true'
         run: |
           docker run -d -p 5000:5000 --name registry registry:2
       - name: Log in to Docker Hub
-        if: steps.config.outputs.push_to_hub == 'true'
+        if: steps.eval-build.outputs.run_build == 'true' && steps.config.outputs.push_to_hub == 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build image
+        if: steps.eval-build.outputs.run_build == 'true'
         uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.context }}

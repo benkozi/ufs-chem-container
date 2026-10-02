@@ -78,15 +78,35 @@ The GitHub Actions workflows require the following repository-level secrets when
 ### Fork Pull Requests & Security Context
 
 Pull requests originating from external forks run in GitHub's restricted security context where repository secrets are withheld:
-- **Local Container Build Verification**: The `build-test` job runs cleanly on fork PRs, building with Docker Buildx and verifying local registry push (`localhost:5000`) with public layer cache fallbacks. Docker Hub credential verification is gracefully skipped.
+- **Credential Verification Isolation**: Credential verification jobs across workflows are automatically skipped when running outside `ufs-community/ufs-chem-container`, preventing false failures and eliminating runner resource consumption on forks.
+- **Local Container Build Verification**: The `build-test` job runs cleanly on fork PRs. If the Dockerfile changed, it builds with Docker Buildx and verifies local registry push (`localhost:5000`) with public layer cache fallbacks.
 - **Semantic Release Preview**: The preview workflow evaluates the PR title and generates projected release diffs using `github.token` fallback, gracefully skipping App token verification.
 - **Sandbox Builds**: Publishing sandbox test containers to Docker Hub requires write secrets and must be triggered from internal branches within `ufs-community/ufs-chem-container`.
 
 ### Automated Secret & Permission Verification
 
-A dedicated verification workflow ([.github/workflows/verify-secrets.yml](.github/workflows/verify-secrets.yml)) runs on a daily cron schedule (`0 6 * * *` at 06:00 UTC) and can be triggered on demand via `workflow_dispatch`. It continuously verifies:
+A dedicated verification workflow ([.github/workflows/verify-secrets.yml](.github/workflows/verify-secrets.yml)) runs on a daily cron schedule (`0 6 * * *` at 06:00 UTC) and can be triggered on demand via `workflow_dispatch` in the authoritative upstream repository. It continuously verifies:
 1. Docker Hub login and registry push permissions for all target repositories (`ufschem-spack-base-ubuntu-gcc-13`, `ufschem-spack-base-ubuntu-gcc-13-dev`, and `ufschem-spack-base-ubuntu-gcc-13-sandbox`).
 2. GitHub App token acquisition, repository write permissions, Git ref operations, and branch ruleset bypass permissions on `develop` and `main`.
+
+
+## CI/CD Optimization & Build Short-Circuiting
+
+Compiling the Spack-based container environment requires 35–45 minutes of runner execution. To maximize developer velocity and minimize compute consumption, workflows incorporate intelligent change detection:
+
+### 1. Pull Request Build Short-Circuiting
+- Workflows evaluate Git diffs (`origin/<base>...HEAD`) for each Dockerfile defined in the build matrix.
+- **Dockerfile Unchanged**: Container compilation in `build-test` is short-circuited entirely. An informational optimization report is published to `$GITHUB_STEP_SUMMARY` and the check completes in under 30 seconds.
+- **Dockerfile Changed**: The container image is compiled and verified against the runner's ephemeral local registry.
+
+### 2. Fast-Track Sandbox Builds
+- If a pull request requests a sandbox build (`sandbox-build` label and `sandbox-version=...`), but the Dockerfile has not changed, the existing upstream image is re-tagged directly to `${DOCKER_ORG}/${IMAGE_NAME}-sandbox:${SANDBOX_VERSION}` using `docker buildx imagetools create`.
+- This publishes the sandbox test artifact in ~15 seconds without rebuilding. If the source image manifest is unavailable, the workflow automatically falls back to full compilation.
+
+### 3. Fast-Track Release Publication
+- When releases or prereleases are triggered upon merge to `develop` or `main`, the workflow inspects whether the Dockerfile changed since the preceding release tag (`git describe --tags --abbrev=0 HEAD~1`).
+- **Dockerfile Unchanged**: Avoids re-compilation. Existing OCI image manifests on Docker Hub are re-tagged directly in ~2–5 seconds with bit-for-bit cryptographic reproducibility (promoting `dev:latest` to production or updating prerelease candidate tags).
+- **Dockerfile Changed**: Compiles the new container recipe and pushes updated tags via Docker Buildx. If registry manifest re-tagging encounters any errors, the workflow automatically falls back to full compilation.
 
 
 ## Development & Pre-Commit

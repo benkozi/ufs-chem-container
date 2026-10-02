@@ -36,6 +36,7 @@ on:
 jobs:
   verify-credentials:
     name: Verify Semantic Release Credentials
+    if: github.repository == 'ufs-community/ufs-chem-container'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
@@ -71,6 +72,9 @@ jobs:
     name: Semantic Release
     needs:
       - verify-credentials
+    if: >-
+      !cancelled() &&
+      (needs.verify-credentials.result == 'success' || needs.verify-credentials.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       current_version: ${{ steps.eval.outputs.current_version }}

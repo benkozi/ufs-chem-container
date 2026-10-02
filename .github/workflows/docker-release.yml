@@ -40,6 +40,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           submodules: recursive
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
@@ -48,7 +49,49 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+      - name: Check if Dockerfile changed
+        id: check-change
+        run: |
+          python3 .github/workflows/scripts/check_dockerfile_change.py \
+            --dockerfile "${{ inputs.dockerfile }}" \
+            --event-name "release" \
+            --release-version "${{ inputs.release_version }}" \
+            ${{ inputs.is_prerelease == 'true' && '--is-prerelease' || '' }} \
+            --image-name "${{ inputs.image_name }}" \
+            --org "${{ secrets.DOCKER_ORG }}"
+      - name: Fast-track release manifest re-tag
+        if: steps.check-change.outputs.action == 'retag'
+        id: retag
+        continue-on-error: true
+        env:
+          SOURCE_IMAGE: ${{ steps.check-change.outputs.source_image }}
+          TARGET_TAGS: ${{ steps.check-change.outputs.target_tags }}
+        run: |
+          echo "Fast-tracking release publication via manifest re-tagging..."
+          TAG_ARGS=()
+          for t in $TARGET_TAGS; do
+            TAG_ARGS+=(--tag "$t")
+          done
+          echo "Re-tagging $SOURCE_IMAGE to ${TAG_ARGS[*]}"
+          if docker buildx imagetools create "${TAG_ARGS[@]}" "$SOURCE_IMAGE"; then
+            echo "Successfully re-tagged $SOURCE_IMAGE directly on registry."
+            echo "retag_success=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Manifest re-tagging failed. Falling back to container compilation."
+            echo "retag_success=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Evaluate if compilation is needed
+        id: eval-build
+        run: |
+          BUILD_NEEDED="${{ steps.check-change.outputs.build_needed }}"
+          RETAG_SUCCESS="${{ steps.retag.outputs.retag_success }}"
+          if [ "$BUILD_NEEDED" = "true" ] || [ "$RETAG_SUCCESS" != "true" ]; then
+            echo "run_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_build=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Compute tags
+        if: steps.eval-build.outputs.run_build == 'true'
         id: tags
         run: |
           ORG="${{ secrets.DOCKER_ORG }}"
@@ -62,6 +105,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       - name: Push release image
+        if: steps.eval-build.outputs.run_build == 'true'
         uses: docker/build-push-action@v7
         with:
           context: ${{ inputs.context }}
